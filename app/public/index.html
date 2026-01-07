@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CRM Taller Automotriz</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.js'></script>
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="logo">
+                <h2>AutoFix CRM</h2>
+            </div>
+            <nav class="nav-links">
+                <a href="#" class="active" onclick="showSection('dashboard')">Dashboard</a>
+                <a href="#" onclick="showSection('daily-entries')">Ingresos del Día</a>
+                <a href="#" onclick="showSection('ingreso')">Nuevo Ingreso</a>
+                <a href="#" onclick="showSection('revision')">Revisión</a>
+                <a href="#" onclick="showSection('revision-history')">Historial Revisiones</a>
+                <a href="#" onclick="showSection('calendar')">Calendario</a>
+                <a href="#" onclick="showSection('estimates')">Presupuestos</a>
+                <a href="#" onclick="showSection('reportes')">Reportes</a>
+            </nav>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <header class="top-bar">
+                <h1>Panel de Control</h1>
+                <div class="user-info">
+                    <span>Admin User</span>
+                </div>
+            </header>
+
+            <!-- Dashboard Section -->
+            <section id="dashboard" class="content-section">
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <h3>En Taller</h3>
+                        <p class="stat-number" id="total-vehicles">0</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>En Proceso</h3>
+                        <p class="stat-number" id="in-process-vehicles">0</p>
+                    </div>
+                </div>
+
+                <div class="table-container">
+                    <h3>Vehículos Recientes</h3>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Placa</th>
+                                <th>Modelo</th>
+                                <th>Status</th>
+                                <th>Fecha Ingreso</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="vehicle-table-body">
+                            <!-- Populated by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Daily Entries Section (Ingresos del Dia) -->
+            <section id="daily-entries" class="content-section hidden">
+                <div class="table-container">
+                    <h3>Ingresos del Día</h3>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>No. Orden</th>
+                                <th>Usuario</th>
+                                <th>Modelo</th>
+                                <th>Año</th>
+                                <th>Marca</th>
+                                <th>Placas</th>
+                            </tr>
+                        </thead>
+                        <tbody id="daily-table-body">
+                            <!-- Populated by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Ingreso Section -->
+            <section id="ingreso" class="content-section hidden">
+                <div class="form-container">
+                    <h3>Registrar Nuevo Vehículo</h3>
+
+                    <!-- Search Revision -->
+                    <div class="search-box"
+                        style="margin-bottom: 24px; padding-bottom: 24px; border-bottom: 1px solid #e2e8f0;">
+                        <label for="search_revision_code"
+                            style="display: block; margin-bottom: 8px; font-weight: 500; color: #1e293b;">Id de
+                            revisión</label>
+                        <div style="display: flex; gap: 10px;">
+                            <input type="text" id="search_revision_code"
+                                placeholder="Ingresar Código de Revisión (ej: E01T1234)"
+                                style="flex: 1; padding: 10px; border-radius: 8px; border: 1px solid #cbd5e1;">
+                            <button type="button" id="btn-search-revision" class="btn-primary"
+                                style="padding: 10px 20px;">Buscar</button>
+                        </div>
+                    </div>
+
+                    <form id="ingreso-form">
+                        <div class="form-group">
+                            <label for="plate">Placa</label>
+                            <input type="text" id="plate" name="plate" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="brand">Marca</label>
+                            <input type="text" id="brand" name="brand" placeholder="Ej: VW, Nissan..." required>
+                        </div>
+                        <div class="form-group">
+                            <label for="model">Modelo</label>
+                            <input type="text" id="model" name="model" placeholder="Ej: Jetta, Versa..." required>
+                        </div>
+                        <div class="form-group">
+                            <label for="year">Año</label>
+                            <input type="number" id="year" name="year" placeholder="Ej: 2023" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="color">Color</label>
+                            <input type="text" id="color" name="color">
+                        </div>
+                        <div class="form-group">
+                            <label for="kilometers">Kilometraje</label>
+                            <input type="number" id="kilometers" name="kilometers" placeholder="Ej: 50000">
+                        </div>
+                        <div class="form-group">
+                            <label for="serial_number">No. de Serie (VIN)</label>
+                            <input type="text" id="serial_number" name="serial_number" placeholder="Ej: 3N1AB...">
+                        </div>
+                        <div class="form-group">
+                            <label for="fuel_level">Nivel de Combustible</label>
+                            <select id="fuel_level" name="fuel_level"
+                                style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px;">
+                                <option value="">Seleccionar...</option>
+                                <option value="Reserva">Reserva</option>
+                                <option value="1/4">1/4</option>
+                                <option value="1/2">1/2</option>
+                                <option value="3/4">3/4</option>
+                                <option value="Lleno">Lleno</option>
+                            </select>
+                        </div>
+
+                        <!-- Customer Info -->
+                        <div class="form-group">
+                            <label for="owner_name">Nombre del Dueño</label>
+                            <input type="text" id="owner_name" name="owner_name" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="contact_phone">Teléfono de Contacto</label>
+                            <input type="tel" id="contact_phone" name="contact_phone" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="email">Correo Electrónico</label>
+                            <input type="email" id="email" name="email" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="rfc">RFC (Opcional)</label>
+                            <input type="text" id="rfc" name="rfc">
+                        </div>
+
+                        <!-- Insurance Toggle -->
+                        <div class="form-group">
+                            <label>
+                                <input type="checkbox" id="is_insurance" name="is_insurance">
+                                ¿Entra por Seguro?
+                            </label>
+                        </div>
+
+                        <!-- Conditional Fields -->
+                        <div id="insurance-fields" class="hidden">
+                            <div class="form-group">
+                                <label for="insurance_company">Compañía Aseguradora</label>
+                                <input type="text" id="insurance_company" name="insurance_company"
+                                    placeholder="Ej: Qualitas, AXA...">
+                            </div>
+                            <div class="form-group">
+                                <label for="policy_number">No. de Póliza</label>
+                                <input type="text" id="policy_number" name="policy_number" placeholder="Ej: 123456789">
+                            </div>
+                            <div class="form-group">
+                                <label for="entry_reason">Motivo de Ingreso</label>
+                                <textarea id="entry_reason" name="entry_reason" rows="3"
+                                    placeholder="Descripción del siniestro o reparación..."></textarea>
+                            </div>
+                        </div>
+
+                        <button type="submit" class="btn-primary">Registrar Vehículo</button>
+                    </form>
+                </div>
+            </section>
+
+            <!-- Revision History Section -->
+            <section id="revision-history" class="content-section hidden">
+                <div class="table-container">
+                    <h3>Historial de Revisiones</h3>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>ID Revisión</th>
+                                <th>Placa</th>
+                                <th>Marca/Modelo</th>
+                                <th>Dueño</th>
+                                <th>Fecha</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="revision-history-body">
+                            <!-- Populated by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Estimates Section -->
+            <section id="estimates" class="content-section hidden">
+                <div class="form-container">
+                    <h3>Generar Presupuesto</h3>
+
+                    <!-- Search Vehicle -->
+                    <div class="search-box"
+                        style="margin-bottom: 24px; padding-bottom: 24px; border-bottom: 1px solid #e2e8f0;">
+                        <label for="search_estimate_code"
+                            style="display: block; margin-bottom: 8px; font-weight: 500; color: #1e293b;">Buscar por ID
+                            de Revisión</label>
+                        <div style="display: flex; gap: 10px;">
+                            <input type="text" id="search_estimate_code" placeholder="Ej: E01T1234"
+                                style="flex: 1; padding: 10px; border-radius: 8px; border: 1px solid #cbd5e1;">
+                            <button type="button" id="btn-search-estimate" class="btn-primary"
+                                style="padding: 10px 20px;">Buscar</button>
+                        </div>
+                    </div>
+
+                    <!-- Car Info Viz -->
+                    <div id="estimate-car-info" class="hidden"
+                        style="background: #f1f5f9; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                        <h4 style="margin-top: 0;">Detalles del Vehículo</h4>
+                        <p><strong>Vehículo:</strong> <span id="est_brand_model"></span></p>
+                        <p><strong>Dueño:</strong> <span id="est_owner"></span></p>
+                        <input type="hidden" id="est_vehicle_id">
+                    </div>
+
+                    <!-- Categories -->
+                    <div id="estimate-categories" class="hidden">
+
+                        <!-- Category Template (Will be duplicated by JS logic ideally, but simpler to hardcode for clarity) -->
+                        <div class="estimate-category" data-category="pintura">
+                            <h4 class="category-header" onclick="toggleCategory(this)"
+                                style="cursor: pointer; background: #e2e8f0; padding: 10px; border-radius: 6px; margin: 10px 0; display: flex; justify-content: space-between;">
+                                <span>Pintura</span>
+                                <span>▼</span>
+                            </h4>
+                            <div class="category-content hidden"
+                                style="padding: 10px; border: 1px solid #e2e8f0; border-top: none;">
+                                <div class="form-group">
+                                    <label>Descripción</label>
+                                    <textarea class="est-desc" rows="2"></textarea>
+                                </div>
+                                <div class="form-group">
+                                    <label>Monto</label>
+                                    <input type="number" class="est-amount" oninput="calculateTotal()"
+                                        placeholder="0.00">
+                                </div>
+                                <div class="form-group">
+                                    <label>
+                                        <input type="checkbox" class="est-has-parts" onchange="toggleParts(this)">
+                                        ¿Requiere Piezas?
+                                    </label>
+                                </div>
+                                <div class="form-group parts-field hidden">
+                                    <label>Nombre de Piezas</label>
+                                    <input type="text" class="est-parts-name">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Laminado -->
+                        <div class="estimate-category" data-category="laminado">
+                            <h4 class="category-header" onclick="toggleCategory(this)"
+                                style="cursor: pointer; background: #e2e8f0; padding: 10px; border-radius: 6px; margin: 10px 0; display: flex; justify-content: space-between;">
+                                <span>Laminado</span>
+                                <span>▼</span>
+                            </h4>
+                            <div class="category-content hidden"
+                                style="padding: 10px; border: 1px solid #e2e8f0; border-top: none;">
+                                <div class="form-group">
+                                    <label>Descripción</label>
+                                    <textarea class="est-desc" rows="2"></textarea>
+                                </div>
+                                <div class="form-group">
+                                    <label>Monto</label>
+                                    <input type="number" class="est-amount" oninput="calculateTotal()"
+                                        placeholder="0.00">
+                                </div>
+                                <div class="form-group">
+                                    <label>
+                                        <input type="checkbox" class="est-has-parts" onchange="toggleParts(this)">
+                                        ¿Requiere Piezas?
+                                    </label>
+                                </div>
+                                <div class="form-group parts-field hidden">
+                                    <label>Nombre de Piezas</label>
+                                    <input type="text" class="est-parts-name">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Cristales -->
+                        <div class="estimate-category" data-category="cristales">
+                            <h4 class="category-header" onclick="toggleCategory(this)"
+                                style="cursor: pointer; background: #e2e8f0; padding: 10px; border-radius: 6px; margin: 10px 0; display: flex; justify-content: space-between;">
+                                <span>Cristales</span>
+                                <span>▼</span>
+                            </h4>
+                            <div class="category-content hidden"
+                                style="padding: 10px; border: 1px solid #e2e8f0; border-top: none;">
+                                <div class="form-group">
+                                    <label>Descripción</label>
+                                    <textarea class="est-desc" rows="2"></textarea>
+                                </div>
+                                <div class="form-group">
+                                    <label>Monto</label>
+                                    <input type="number" class="est-amount" oninput="calculateTotal()"
+                                        placeholder="0.00">
+                                </div>
+                                <div class="form-group">
+                                    <label>
+                                        <input type="checkbox" class="est-has-parts" onchange="toggleParts(this)">
+                                        ¿Requiere Piezas?
+                                    </label>
+                                </div>
+                                <div class="form-group parts-field hidden">
+                                    <label>Nombre de Piezas</label>
+                                    <input type="text" class="est-parts-name">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Eléctrico -->
+                        <div class="estimate-category" data-category="electrico">
+                            <h4 class="category-header" onclick="toggleCategory(this)"
+                                style="cursor: pointer; background: #e2e8f0; padding: 10px; border-radius: 6px; margin: 10px 0; display: flex; justify-content: space-between;">
+                                <span>Eléctrico</span>
+                                <span>▼</span>
+                            </h4>
+                            <div class="category-content hidden"
+                                style="padding: 10px; border: 1px solid #e2e8f0; border-top: none;">
+                                <div class="form-group">
+                                    <label>Descripción</label>
+                                    <textarea class="est-desc" rows="2"></textarea>
+                                </div>
+                                <div class="form-group">
+                                    <label>Monto</label>
+                                    <input type="number" class="est-amount" oninput="calculateTotal()"
+                                        placeholder="0.00">
+                                </div>
+                                <div class="form-group">
+                                    <label>
+                                        <input type="checkbox" class="est-has-parts" onchange="toggleParts(this)">
+                                        ¿Requiere Piezas?
+                                    </label>
+                                </div>
+                                <div class="form-group parts-field hidden">
+                                    <label>Nombre de Piezas</label>
+                                    <input type="text" class="est-parts-name">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Motor -->
+                        <div class="estimate-category" data-category="motor">
+                            <h4 class="category-header" onclick="toggleCategory(this)"
+                                style="cursor: pointer; background: #e2e8f0; padding: 10px; border-radius: 6px; margin: 10px 0; display: flex; justify-content: space-between;">
+                                <span>Motor</span>
+                                <span>▼</span>
+                            </h4>
+                            <div class="category-content hidden"
+                                style="padding: 10px; border: 1px solid #e2e8f0; border-top: none;">
+                                <div class="form-group">
+                                    <label>Descripción</label>
+                                    <textarea class="est-desc" rows="2"></textarea>
+                                </div>
+                                <div class="form-group">
+                                    <label>Monto</label>
+                                    <input type="number" class="est-amount" oninput="calculateTotal()"
+                                        placeholder="0.00">
+                                </div>
+                                <div class="form-group">
+                                    <label>
+                                        <input type="checkbox" class="est-has-parts" onchange="toggleParts(this)">
+                                        ¿Requiere Piezas?
+                                    </label>
+                                </div>
+                                <div class="form-group parts-field hidden">
+                                    <label>Nombre de Piezas</label>
+                                    <input type="text" class="est-parts-name">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Extras -->
+                        <div class="estimate-category" data-category="extras">
+                            <h4 class="category-header" onclick="toggleCategory(this)"
+                                style="cursor: pointer; background: #e2e8f0; padding: 10px; border-radius: 6px; margin: 10px 0; display: flex; justify-content: space-between;">
+                                <span>Extras</span>
+                                <span>▼</span>
+                            </h4>
+                            <div class="category-content hidden"
+                                style="padding: 10px; border: 1px solid #e2e8f0; border-top: none;">
+                                <div class="form-group">
+                                    <label>Descripción</label>
+                                    <textarea class="est-desc" rows="2"></textarea>
+                                </div>
+                                <div class="form-group">
+                                    <label>Monto</label>
+                                    <input type="number" class="est-amount" oninput="calculateTotal()"
+                                        placeholder="0.00">
+                                </div>
+                                <div class="form-group">
+                                    <label>
+                                        <input type="checkbox" class="est-has-parts" onchange="toggleParts(this)">
+                                        ¿Requiere Piezas?
+                                    </label>
+                                </div>
+                                <div class="form-group parts-field hidden">
+                                    <label>Nombre de Piezas</label>
+                                    <input type="text" class="est-parts-name">
+                                </div>
+                            </div>
+                        </div> <!-- End Extras -->
+                    </div> <!-- End Estimate Categories -->
+
+                    <div class="summary-section" style="margin-top: 32px; text-align: right;">
+                        <div style="font-size: 1.5rem; font-weight: bold; color: #1e293b; margin-bottom: 16px;">
+                            Total Estimado: $<span id="est-total-display">0.00</span>
+                        </div>
+                        <button type="button" id="btn-save-estimate" class="btn-primary"
+                            style="padding: 12px 32px; font-size: 1.1rem;">
+                            Guardar Presupuesto
+                        </button>
+                    </div>
+                </div> <!-- End Form Container -->
+
+                <!-- Estimates History Section -->
+                <div class="wide-container" style="margin-top: 2rem;">
+                    <div
+                        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                        <h3 style="margin: 0; color: #1e293b;">Historial de Presupuestos</h3>
+                        <div style="display: flex; gap: 10px;">
+                            <input type="text" id="search-estimate-history" placeholder="Buscar por ID..."
+                                style="padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 6px; width: 200px;">
+                        </div>
+                    </div>
+                    <div class="table-container" style="padding: 0; box-shadow: none;">
+                        <table class="history-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Fecha</th>
+                                    <th>Vehículo</th>
+                                    <th>Generado Por</th>
+                                    <th>Total Estimado</th>
+                                    <th>Monto Aprobado</th>
+                                    <th>Notas Aprobación</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="estimates-history-body">
+                                <!-- Populated by JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </section>
+
+            <!-- Calendar Section -->
+            <section id="calendar" class="content-section hidden">
+                <div class="wide-container" style="height: 100%;">
+                    <h3 style="margin-bottom: 20px;">Agenda de Taller</h3>
+                    <div id="calendar-el" style="height: 700px;"></div>
+                </div>
+            </section>
+
+            <!-- Revision Section -->
+            <section id="revision" class="content-section hidden">
+                <div class="form-container">
+                    <h3>Nueva Revisión</h3>
+                    <form id="revision-form">
+                        <div class="form-group">
+                            <label for="rev_plate">Placa</label>
+                            <input type="text" id="rev_plate" name="plate" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="rev_brand">Marca</label>
+                            <input type="text" id="rev_brand" name="brand" placeholder="Ej: VW, Nissan..." required>
+                        </div>
+                        <div class="form-group">
+                            <label for="rev_model">Modelo</label>
+                            <input type="text" id="rev_model" name="model" placeholder="Ej: Jetta, Versa..." required>
+                        </div>
+                        <div class="form-group">
+                            <label for="rev_year">Año</label>
+                            <input type="number" id="rev_year" name="year" placeholder="Ej: 2023" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="rev_color">Color</label>
+                            <input type="text" id="rev_color" name="color">
+                        </div>
+                        <div class="form-group">
+                            <label for="rev_kilometers">Kilometraje</label>
+                            <input type="number" id="rev_kilometers" name="kilometers" placeholder="Ej: 50000">
+                        </div>
+                        <div class="form-group">
+                            <label for="rev_serial_number">No. de Serie (VIN)</label>
+                            <input type="text" id="rev_serial_number" name="serial_number" placeholder="Ej: 3N1AB...">
+                        </div>
+                        <div class="form-group">
+                            <label for="rev_fuel_level">Nivel de Combustible</label>
+                            <select id="rev_fuel_level" name="fuel_level"
+                                style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px;">
+                                <option value="">Seleccionar...</option>
+                                <option value="Reserva">Reserva</option>
+                                <option value="1/4">1/4</option>
+                                <option value="1/2">1/2</option>
+                                <option value="3/4">3/4</option>
+                                <option value="Lleno">Lleno</option>
+                            </select>
+                        </div>
+
+                        <!-- Customer Info Revision -->
+                        <div class="form-group">
+                            <label for="rev_owner_name">Nombre del Dueño</label>
+                            <input type="text" id="rev_owner_name" name="owner_name" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="rev_contact_phone">Teléfono de Contacto</label>
+                            <input type="tel" id="rev_contact_phone" name="contact_phone" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="rev_email">Correo Electrónico</label>
+                            <input type="email" id="rev_email" name="email" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="rev_rfc">RFC (Opcional)</label>
+                            <input type="text" id="rev_rfc" name="rfc">
+                        </div>
+
+                        <!-- Insurance Toggle Revision -->
+                        <div class="form-group">
+                            <label>
+                                <input type="checkbox" id="rev_is_insurance" name="is_insurance">
+                                ¿Entra por Seguro?
+                            </label>
+                        </div>
+
+                        <!-- Conditional Fields Revision -->
+                        <div id="rev-insurance-fields" class="hidden">
+                            <div class="form-group">
+                                <label for="rev_insurance_company">Compañía Aseguradora</label>
+                                <input type="text" id="rev_insurance_company" name="insurance_company"
+                                    placeholder="Ej: Qualitas, AXA...">
+                            </div>
+                            <div class="form-group">
+                                <label for="rev_policy_number">No. de Póliza</label>
+                                <input type="text" id="rev_policy_number" name="policy_number"
+                                    placeholder="Ej: 123456789">
+                            </div>
+                            <div class="form-group">
+                                <label for="rev_entry_reason">Motivo de Ingreso</label>
+                                <textarea id="rev_entry_reason" name="entry_reason" rows="3"
+                                    placeholder="Descripción del siniestro o reparación..."></textarea>
+                            </div>
+                        </div>
+
+                        <button type="submit" class="btn-primary" style="background-color: #059669;">Crear
+                            Revisión</button>
+                    </form>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Approval Modal -->
+    <div id="approval-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Autorizar Presupuesto</h3>
+                <span class="close-modal" id="btn-close-modal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="approval-instructions">
+                    Selecciona los conceptos que el cliente ha autorizado:
+                </div>
+                <div id="approval-items-list" class="approval-items-container">
+                    <!-- Items populated by JS -->
+                </div>
+
+                <div class="approval-summary">
+                    <div class="summary-row">
+                        <span>Total Autorizado:</span>
+                        <span class="summary-amount">$<span id="approval-total">0.00</span></span>
+                    </div>
+                </div>
+
+                <div class="form-group" style="margin-top: 15px;">
+                    <label for="approval-notes">Notas de Aprobación</label>
+                    <textarea id="approval-notes" class="approval-notes-area" rows="3"
+                        placeholder="Ej: Cliente autoriza todo excepto pintura..."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" id="btn-cancel-approval"
+                    onclick="document.getElementById('approval-modal').classList.add('hidden')">Cancelar</button>
+                <button class="btn-primary" id="btn-confirm-approval">Autorizar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Schedule Modal -->
+    <div id="schedule-modal" class="modal hidden">
+        <div class="modal-content" style="max-width: 400px;">
+            <div class="modal-header">
+                <h3>Agendar Cita</h3>
+                <span class="close-modal" id="btn-close-schedule">&times;</span>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="schedule-date">
+                <div class="form-group">
+                    <label for="schedule-revision-id">ID de Revisión</label>
+                    <input type="text" id="schedule-revision-id" placeholder="Ej: ENE-VW-1234"
+                        style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px;">
+                </div>
+                <div class="form-group">
+                    <label for="schedule-time">Hora de Ingreso (Max 6:00 PM)</label>
+                    <input type="time" id="schedule-time"
+                        style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px;">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary"
+                    onclick="document.getElementById('schedule-modal').classList.add('hidden')">Cancelar</button>
+                <button class="btn-primary" id="btn-confirm-schedule">Agendar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Event Details Modal -->
+    <div id="event-details-modal" class="modal hidden">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">
+                <h3>Detalles de la Cita</h3>
+                <span class="close-modal" id="btn-close-details">&times;</span>
+            </div>
+            <div class="modal-body" id="event-details-body" style="line-height: 1.6;">
+                <input type="hidden" id="det-revision-id">
+                <p><strong>Vehículo:</strong> <span id="det-vehicle"></span></p>
+                <p><strong>Placa:</strong> <span id="det-plate"></span></p>
+                <p><strong>Color:</strong> <span id="det-color"></span></p>
+                <p><strong>Dueño:</strong> <span id="det-owner"></span></p>
+                <p><strong>Teléfono:</strong> <span id="det-phone"></span></p>
+                <p><strong>Fecha Programada:</strong> <span id="det-date"></span></p>
+                <div style="margin-top: 10px; background: #f8fafc; padding: 10px; border-radius: 4px;">
+                    <strong>Motivo de Ingreso:</strong>
+                    <p id="det-reason" style="margin: 5px 0 0 0; color: #475569;"></p>
+                </div>
+            </div>
+            <div class="modal-footer" style="display: flex; justify-content: space-between;">
+                <button class="btn-primary" style="background-color: #ef4444;" id="btn-cancel-appt">Cancelar</button>
+                <div style="display: flex; gap: 10px;">
+                    <button class="btn-primary" style="background-color: #10b981;"
+                        id="btn-checkin-appt">Ingreso</button>
+                    <button class="btn-primary"
+                        onclick="document.getElementById('event-details-modal').classList.add('hidden')">Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/app.js"></script>
+</body>
+
+</html>
