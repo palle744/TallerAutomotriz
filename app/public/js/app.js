@@ -1193,3 +1193,32 @@ document.getElementById('btn-confirm-schedule').addEventListener('click', async 
 document.getElementById('btn-close-details').addEventListener('click', () => {
     document.getElementById('event-details-modal').classList.add('hidden');
 });
+
+// Mobile Sidebar Toggle
+document.addEventListener('DOMContentLoaded', () => {
+    const menuToggle = document.getElementById('menu-toggle');
+    const sidebarClose = document.getElementById('sidebar-close');
+    const sidebar = document.getElementById('sidebar');
+    const navLinks = document.querySelectorAll('.nav-links a');
+
+    if (menuToggle) {
+        menuToggle.addEventListener('click', () => {
+            sidebar.classList.add('active');
+        });
+    }
+
+    if (sidebarClose) {
+        sidebarClose.addEventListener('click', () => {
+            sidebar.classList.remove('active');
+        });
+    }
+
+    // Close sidebar when clicking a link on mobile
+    navLinks.forEach(link => {
+        link.addEventListener('click', () => {
+            if (window.innerWidth <= 768) {
+                sidebar.classList.remove('active');
+            }
+        });
+    });
+});

@@ -14,9 +14,11 @@
 <body>
     <div class="app-container">
         <!-- Sidebar -->
-        <aside class="sidebar">
+        <aside class="sidebar" id="sidebar">
             <div class="logo">
                 <h2>AutoFix CRM</h2>
+                <button id="sidebar-close" class="mobile-only"
+                    style="background:none; border:none; font-size:1.5rem; cursor:pointer;">&times;</button>
             </div>
             <nav class="nav-links">
                 <a href="#" class="active" onclick="showSection('dashboard')">Dashboard</a>
@@ -33,9 +35,12 @@
         <!-- Main Content -->
         <main class="main-content">
             <header class="top-bar">
-                <h1>Panel de Control</h1>
-                <div class="user-info">
+                <div style="display: flex; align-items: center; gap: 1rem;">
+                    <h1>Panel de Control</h1>
+                </div>
+                <div class="user-info" style="display: flex; align-items: center; gap: 1rem;">
                     <span>Admin User</span>
+                    <button id="menu-toggle" class="btn-primary mobile-only" style="padding: 8px 12px;">☰</button>
                 </div>
             </header>
 

@@ -1,0 +1,44 @@
+{
+    "family": "tallerautomotriz-task",
+    "containerDefinitions": [
+        {
+            "name": "tallerautomotriz",
+            "image": "ghcr.io/palle744/tallerautomotriz:latest",
+            "cpu": 0,
+            "portMappings": [
+                {
+                    "containerPort": 3000,
+                    "hostPort": 3000,
+                    "protocol": "tcp"
+                }
+            ],
+            "essential": true,
+            "environment": [
+                {
+                    "name": "DB_HOST",
+                    "value": "localhost"
+                },
+                {
+                    "name": "DB_PORT",
+                    "value": "5432"
+                }
+            ],
+            "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                    "awslogs-create-group": "true",
+                    "awslogs-group": "/ecs/tallerautomotriz",
+                    "awslogs-region": "us-east-1",
+                    "awslogs-stream-prefix": "ecs"
+                }
+            }
+        }
+    ],
+    "scope": "shared",
+    "requiresCompatibilities": [
+        "FARGATE"
+    ],
+    "cpu": "1024",
+    "memory": "3072",
+    "networkMode": "awsvpc"
+}
