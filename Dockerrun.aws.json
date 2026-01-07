@@ -1,0 +1,4 @@
+{
+    "AWSEBDockerrunVersion": "3",
+    "Logging": "/var/log/app"
+}
