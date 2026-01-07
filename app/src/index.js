@@ -6,15 +6,15 @@ const app = express();
 const port = 3000;
 
 // Database connection
+const isProduction = process.env.DB_HOST && process.env.DB_HOST.includes('amazonaws.com');
+
 const pool = new Pool({
   user: process.env.DB_USER,
   host: process.env.DB_HOST,
   database: process.env.DB_NAME,
   password: process.env.DB_PASS,
   port: process.env.DB_PORT,
-  ssl: {
-    rejectUnauthorized: false
-  }
+  ssl: isProduction ? { rejectUnauthorized: false } : false
 });
 
 // Middleware
