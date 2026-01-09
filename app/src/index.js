@@ -37,6 +37,17 @@ app.get('/api/vehicles', async (req, res) => {
     if (status) {
       query += ` WHERE s.name = $1`;
       params.push(status);
+
+      // Robustness: If filtering by 'Ingreso', also exclude vehicles that HAVE revisions 
+      // (even if status wasn't updated correctly).
+      // Logic: Exclude if a revision exists for this plate created AFTER or roughly same time as vehicle entry.
+      if (status === 'Ingreso') {
+        query += ` AND NOT EXISTS (
+              SELECT 1 FROM revisions r 
+              WHERE r.plate = v.plate 
+              AND r.created_at >= v.created_at
+          )`;
+      }
     }
 
     query += ` ORDER BY v.updated_at DESC`;
