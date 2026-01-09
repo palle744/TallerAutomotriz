@@ -44,8 +44,8 @@ app.get('/api/vehicles', async (req, res) => {
       if (status === 'Ingreso') {
         query += ` AND NOT EXISTS (
               SELECT 1 FROM revisions r 
-              WHERE r.plate = v.plate 
-              AND r.created_at >= (v.created_at - INTERVAL '1 hour')
+              WHERE LOWER(r.plate) = LOWER(v.plate) 
+              AND r.created_at::date >= v.created_at::date
           )`;
       }
     }
@@ -130,10 +130,15 @@ app.post('/api/revisions', async (req, res) => {
     `;
     const result = await pool.query(query, [revisionCode, plate, model, brand, year, color, req.body.kilometers || null, req.body.serial_number || null, req.body.fuel_level || null, userId, is_insurance_claim || false, insurance_company, policy_number || null, entry_reason, owner_name, contact_phone, email, rfc, scheduled_date || null]);
 
-    // Update Vehicle Status to 'En Proceso' (2) if it is 'Ingreso' (1)
-    // This removes it from the "Pending" list
+    // Reliable Status Update:
+    // 1. Get IDs dynamically to be safe.
+    // 2. Use LOWER(plate) to ensure matches.
+    // 3. Update ALL 'Ingreso' vehicles with this plate to 'En Proceso'.
     await pool.query(
-      "UPDATE vehicles SET current_status_id = 2 WHERE plate = $1 AND current_status_id = 1",
+      `UPDATE vehicles 
+       SET current_status_id = (SELECT id FROM repair_statuses WHERE name = 'En Proceso') 
+       WHERE LOWER(plate) = LOWER($1) 
+       AND current_status_id = (SELECT id FROM repair_statuses WHERE name = 'Ingreso')`,
       [plate]
     );
 
