@@ -1,5 +1,6 @@
 document.addEventListener('DOMContentLoaded', () => {
     loadVehicles();
+    loadDashboardRevisions();
 });
 
 function showSection(sectionId) {
@@ -25,8 +26,236 @@ function showSection(sectionId) {
         loadRevisions();
     } else if (sectionId === 'estimates') {
         loadEstimateHistory();
+    } else if (sectionId === 'laminado') {
+        loadLaminadoVehicles();
+    } else if (sectionId === 'pintura') {
+        loadPinturaVehicles();
     } else if (sectionId === 'calendar') {
         loadCalendar();
+    }
+}
+
+async function loadPinturaVehicles() {
+    try {
+        const response = await fetch('/api/vehicles');
+        if (!response.ok) throw new Error('Error loading vehicles');
+        const allVehicles = await response.json();
+
+        // Filter for vehicles that have paint work in their estimate
+        // AND are not yet delivered (assuming we want active cars)
+        const pinturaVehicles = allVehicles.filter(v => v.has_paint_work && v.current_status_id !== 6);
+
+        const tbody = document.getElementById('pintura-table-body');
+        tbody.innerHTML = '';
+
+        if (pinturaVehicles.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding: 20px;">No hay vehículos en área de pintura</td></tr>';
+            return;
+        }
+
+        pinturaVehicles.forEach(vehicle => {
+            const tr = document.createElement('tr');
+
+            // Status Presupuesto Badge
+            let authBadge = '<span class="badge warning" style="background-color: #f59e0b; color: white;">Pendiente</span>';
+            if (vehicle.is_estimate_authorized) {
+                authBadge = '<span class="badge success" style="background-color: #10b981; color: white;">Autorizado</span>';
+            }
+
+            // Actions
+            let actionBtn = '';
+            // If Authorized AND NOT currently in Pintura (Status 3) -> Show "Ingresar"
+            if (vehicle.is_estimate_authorized && vehicle.current_status_id !== 3) {
+                // Check if it's "Ingreso" (1) or "En Proceso" (2) or something else before Pintura
+                actionBtn = `<button class="btn-sm" style="background-color: #10b981; color: white; margin-right: 5px;" 
+                             onclick="requestPaintAction(${vehicle.id}, 'enter')">Ingresar</button>`;
+            }
+            // If Currently IN Pintura (Status 3) -> Show "Terminado"
+            else if (vehicle.current_status_id === 3) {
+                actionBtn = `<button class="btn-sm" style="background-color: #ef4444; color: white; margin-right: 5px;" 
+                             onclick="requestPaintAction(${vehicle.id}, 'finish')">Terminado</button>`;
+            }
+
+            tr.innerHTML = `
+                <td><span class="plate-badge">${vehicle.plate}</span></td>
+                <td>${vehicle.brand} ${vehicle.model} (${vehicle.year})</td>
+                <td>${vehicle.color || '-'}</td>
+                <td>${new Date(vehicle.created_at).toLocaleDateString()}</td>
+                <td>${authBadge}</td>
+                <td style="display: flex; gap: 5px;">
+                    ${actionBtn}
+                    <button class="btn-sm" onclick="openVehicleDetails(${vehicle.id}, 'pintura')">Ver Detalle</button>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+    } catch (error) {
+        console.error('Error loading pintura vehicles:', error);
+        document.getElementById('pintura-table-body').innerHTML = '<tr><td colspan="6" style="text-align:center; color:red;">Error al cargar datos</td></tr>';
+    }
+}
+
+let pendingPaintAction = null; // { id, action }
+
+function requestPaintAction(id, action) {
+    pendingPaintAction = { id, action };
+    const modal = document.getElementById('confirmation-modal');
+    const title = document.getElementById('conf-modal-title');
+    const msg = document.getElementById('conf-modal-msg');
+    const btn = document.getElementById('conf-modal-btn');
+
+    if (action === 'enter') {
+        title.textContent = 'Ingresar a Pintura';
+        msg.textContent = '¿Estás seguro de ingresar este vehículo al área de Pintura? El estatus cambiará a "Pintura".';
+        btn.onclick = () => executePaintAction();
+        btn.style.backgroundColor = '#10b981';
+    } else {
+        title.textContent = 'Terminar Pintura';
+        msg.textContent = '¿El trabajo de pintura ha finalizado? El vehículo pasará a la siguiente fase (Armado).';
+        btn.onclick = () => executePaintAction();
+        btn.style.backgroundColor = '#ef4444';
+    }
+
+    modal.classList.remove('hidden');
+}
+
+async function executePaintAction() {
+    if (!pendingPaintAction) return;
+    const { id, action } = pendingPaintAction;
+
+    // Determine new status ID
+    // 3 = Pintura
+    // 4 = Armado
+    const newStatusId = action === 'enter' ? 3 : 4;
+
+    try {
+        const res = await fetch(`/api/vehicles/${id}/status`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status_id: newStatusId })
+        });
+
+        if (!res.ok) throw new Error('Error al actualizar estatus');
+
+        closeModal('confirmation-modal');
+        alert('Estatus actualizado correctamente');
+        loadPinturaVehicles(); // Reload table
+
+    } catch (error) {
+        console.error(error);
+        alert('Error al actualizar el estatus');
+    }
+}
+
+// --- LAMINADO LOGIC ---
+async function loadLaminadoVehicles() {
+    try {
+        const response = await fetch('/api/vehicles');
+        if (!response.ok) throw new Error('Error loading vehicles');
+        const allVehicles = await response.json();
+
+        // Filter: Has laminado work AND not delivered
+        const laminadoVehicles = allVehicles.filter(v => v.has_laminado_work && v.current_status_id !== 6);
+
+        const tbody = document.getElementById('laminado-table-body');
+        tbody.innerHTML = '';
+
+        if (laminadoVehicles.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding: 20px;">No hay vehículos en área de laminado</td></tr>';
+            return;
+        }
+
+        laminadoVehicles.forEach(vehicle => {
+            const tr = document.createElement('tr');
+
+            // Status Presupuesto Badge
+            let authBadge = '<span class="badge warning" style="background-color: #f59e0b; color: white;">Pendiente</span>';
+            if (vehicle.is_estimate_authorized) {
+                authBadge = '<span class="badge success" style="background-color: #10b981; color: white;">Autorizado</span>';
+            }
+
+            // Actions
+            let actionBtn = '';
+
+            if (vehicle.is_estimate_authorized) {
+                if (vehicle.current_status_id === 1 || vehicle.current_status_id === 2) {
+                    actionBtn = `<button class="btn-sm" style="background-color: #10b981; color: white; margin-right: 5px;" 
+                                  onclick="requestLaminadoAction(${vehicle.id}, 'enter')">Ingresar</button>`;
+                } else if (vehicle.current_status_id === 7) {
+                    actionBtn = `<button class="btn-sm" style="background-color: #ef4444; color: white; margin-right: 5px;" 
+                                  onclick="requestLaminadoAction(${vehicle.id}, 'finish')">Terminado</button>`;
+                } else if (vehicle.current_status_id === 3 || vehicle.current_status_id === 4 || vehicle.current_status_id === 5) {
+                    actionBtn = '<span class="badge success">Completado</span>';
+                }
+            }
+
+            tr.innerHTML = `
+                <td><span class="plate-badge">${vehicle.plate}</span></td>
+                <td>${vehicle.brand} ${vehicle.model} (${vehicle.year})</td>
+                <td>${vehicle.color || '-'}</td>
+                <td>${new Date(vehicle.created_at).toLocaleDateString()}</td>
+                <td>${authBadge}</td>
+                <td style="display: flex; gap: 5px;">
+                    ${actionBtn}
+                    <button class="btn-sm" onclick="openVehicleDetails(${vehicle.id}, 'laminado')">Ver Detalle</button>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+    } catch (error) {
+        console.error('Error loading laminado vehicles:', error);
+        document.getElementById('laminado-table-body').innerHTML = '<tr><td colspan="6" style="text-align:center; color:red;">Error al cargar datos</td></tr>';
+    }
+}
+
+let pendingLaminadoAction = null;
+
+function requestLaminadoAction(id, action) {
+    pendingLaminadoAction = { id, action };
+    const modal = document.getElementById('confirmation-modal');
+    const title = document.getElementById('conf-modal-title');
+    const msg = document.getElementById('conf-modal-msg');
+    const btn = document.getElementById('conf-modal-btn');
+
+    if (action === 'enter') {
+        title.textContent = 'Ingresar a Laminado';
+        msg.textContent = '¿Estás seguro de ingresar este vehículo al área de Laminado?';
+        btn.onclick = () => executeLaminadoAction();
+        btn.style.backgroundColor = '#10b981';
+    } else {
+        title.textContent = 'Terminar Laminado';
+        msg.textContent = '¿El trabajo de laminado ha finalizado? El vehículo pasará a Pintura.';
+        btn.onclick = () => executeLaminadoAction();
+        btn.style.backgroundColor = '#ef4444';
+    }
+
+    modal.classList.remove('hidden');
+}
+
+async function executeLaminadoAction() {
+    if (!pendingLaminadoAction) return;
+    const { id, action } = pendingLaminadoAction;
+
+    // Status 7 = Laminado
+    // Status 3 = Pintura (Assuming next step)
+    const newStatusId = action === 'enter' ? 7 : 3;
+
+    try {
+        const res = await fetch(`/api/vehicles/${id}/status`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status_id: newStatusId })
+        });
+
+        if (!res.ok) throw new Error('Error al actualizar estatus');
+
+        closeModal('confirmation-modal');
+        alert('Estatus actualizado correctamente');
+        loadLaminadoVehicles();
+
+    } catch (error) {
+        console.error(error);
+        alert('Error al actualizar el estatus');
     }
 }
 
@@ -49,9 +278,10 @@ async function loadVehicles() {
             tr.innerHTML = `
                 <td>${vehicle.plate}</td>
                 <td>${vehicle.model}</td>
+                <td>${vehicle.color || '-'}</td>
                 <td><span class="status-badge">${vehicle.status_name || 'Desconocido'}</span></td>
                 <td>${new Date(vehicle.created_at).toLocaleDateString()}</td>
-                <td><button class="btn-sm">Ver</button></td>
+                <td><button class="btn-sm" onclick="openVehicleDetails(${vehicle.id})">Ver</button></td>
             `;
             tbody.appendChild(tr);
         });
@@ -60,14 +290,143 @@ async function loadVehicles() {
     }
 }
 
+async function openVehicleDetails(id, context = 'all') {
+    try {
+        // Fetch Vehicle
+        const vehRes = await fetch(`/api/vehicles/${id}`);
+        if (!vehRes.ok) throw new Error('Error al cargar vehículo');
+        const vehicle = await vehRes.json();
+
+        // Fetch Estimate
+        const estRes = await fetch(`/api/estimates/vehicle/${id}`);
+        const estimate = estRes.ok ? await estRes.json() : null;
+
+        // Populate Vehicle Info
+        document.getElementById('veh-detail-plate').textContent = vehicle.plate;
+        document.getElementById('veh-detail-brand-model').textContent = `${vehicle.brand} ${vehicle.model}`;
+        document.getElementById('veh-detail-year').textContent = vehicle.year || '-';
+        document.getElementById('veh-detail-color').textContent = vehicle.color || '-';
+
+        // Populate Owner Info
+        document.getElementById('veh-detail-owner').textContent = vehicle.owner_name || '-';
+        document.getElementById('veh-detail-phone').textContent = vehicle.contact_phone || '-';
+
+        // Populate Status
+        document.getElementById('veh-detail-status').textContent = vehicle.status_name || 'Ingreso';
+
+        // Populate Estimate Info
+        const estInfoDiv = document.getElementById('veh-estimate-info');
+        const noEstDiv = document.getElementById('veh-no-estimate');
+
+        if (estimate) {
+            estInfoDiv.classList.remove('hidden');
+            noEstDiv.classList.add('hidden');
+
+            document.getElementById('veh-rev-code').textContent = vehicle.revision_code || 'N/A';
+            document.getElementById('veh-est-total').textContent = `$${parseFloat(estimate.total_amount || 0).toFixed(2)}`;
+
+            const statusBadge = document.getElementById('veh-est-status');
+            const authAmount = parseFloat(estimate.approved_amount);
+
+            if (authAmount > 0) {
+                statusBadge.textContent = 'AUTORIZADO';
+                statusBadge.className = 'badge success';
+                statusBadge.style.backgroundColor = '#10b981';
+                statusBadge.style.color = 'white';
+            } else {
+                statusBadge.textContent = 'COTIZADO';
+                statusBadge.className = 'badge warning';
+                statusBadge.style.backgroundColor = '#f59e0b';
+                statusBadge.style.color = 'white';
+            }
+
+            // --- Populate Repair Accordions ---
+            const accordionsContainer = document.getElementById('repair-accordions');
+            if (accordionsContainer) accordionsContainer.classList.remove('hidden');
+
+            // 1. Reset all accordions
+            ['pintura', 'laminado', 'cristales', 'electrico', 'motor', 'extras'].forEach(cat => {
+                const contentDiv = document.getElementById(`acc-${cat}`);
+                const itemDiv = contentDiv.parentElement; // .accordion-item
+
+                if (contentDiv) contentDiv.innerHTML = '<p class="text-gray-500 italic">Sin items</p>';
+
+                // Context Filtering
+                if (context && context !== 'all') {
+                    if (cat === context) {
+                        itemDiv.classList.remove('hidden');
+                        // Auto expand
+                        contentDiv.classList.remove('hidden');
+                    } else {
+                        itemDiv.classList.add('hidden');
+                    }
+                } else {
+                    itemDiv.classList.remove('hidden'); // Show all if no context
+                    contentDiv.classList.add('hidden'); // Ensure collapsed
+                }
+            });
+
+            // 2. Parse data
+            if (estimate.data && Array.isArray(estimate.data)) {
+                estimate.data.forEach(item => {
+                    if (!item.name) return;
+                    const catId = `acc-${item.name.toLowerCase()}`;
+                    const contentDiv = document.getElementById(catId);
+
+                    if (contentDiv) {
+                        // Clear "Sin items" placeholder if it's the first item we see for this cat
+                        if (contentDiv.innerHTML.includes('Sin items')) {
+                            contentDiv.innerHTML = '';
+                        }
+
+                        const itemDiv = document.createElement('div');
+                        itemDiv.style.marginBottom = '12px';
+                        itemDiv.style.padding = '8px';
+                        itemDiv.style.backgroundColor = '#f8fafc';
+                        itemDiv.style.borderRadius = '6px';
+                        itemDiv.innerHTML = `
+                            <p><strong>Desc:</strong> ${item.description || '-'}</p>
+                            <p><strong>Monto:</strong> $${parseFloat(item.amount || 0).toFixed(2)}</p>
+                            ${item.hasParts ? `<p class="text-sm text-blue-600">Piezas: ${item.partsName || 'Sí'}</p>` : ''}
+                        `;
+                        contentDiv.appendChild(itemDiv);
+                    }
+                });
+            }
+
+        } else {
+            estInfoDiv.classList.add('hidden');
+            noEstDiv.classList.remove('hidden');
+
+            // Hide accordions if no estimate
+            const accordionsContainer = document.getElementById('repair-accordions');
+            if (accordionsContainer) accordionsContainer.classList.add('hidden');
+        }
+
+        // Show Modal
+        document.getElementById('vehicle-details-modal').classList.remove('hidden');
+
+    } catch (error) {
+        console.error('Error opening vehicle details:', error);
+        alert('Error al cargar los detalles del vehículo');
+    }
+}
+
 async function loadDashboardRevisions() {
     try {
         const response = await fetch('/api/revisions');
         const revisions = await response.json();
 
+        // Update total revisions stat
+        const totalRevisionsEl = document.getElementById('total-revisions-count');
+        if (totalRevisionsEl) {
+            totalRevisionsEl.textContent = revisions.length;
+        }
+
         // Optional: limit to recent 5 or 10? User didn't specify, but "recientes" implies it.
         // Let's show last 10 for now.
-        const recentRevisions = revisions.slice(0, 10);
+        // Filter out those already checked in
+        const recentRevisions = revisions.filter(r => !r.checked_in).slice(0, 10);
 
         const tbody = document.getElementById('dashboard-revisions-body');
         tbody.innerHTML = '';
@@ -104,7 +463,7 @@ async function loadRevisions() {
                 <td>${rev.brand} ${rev.model} (${rev.year || '-'})</td>
                 <td>${rev.owner_name || '-'}</td>
                 <td>${new Date(rev.created_at).toLocaleDateString()}</td>
-                <td><button class="btn-sm">Ver Detalle</button></td>
+                <td><button class="btn-sm" onclick="openRevisionDetails(${rev.id})">Ver Detalle</button></td>
             `;
             tbody.appendChild(tr);
         });
@@ -154,6 +513,18 @@ document.getElementById('btn-search-revision').addEventListener('click', async (
         }
 
         const data = await response.json();
+
+        // Check if already checked in
+        if (data.checked_in) {
+            alert('Atención: Esta revisión ya fue ingresada al taller.');
+            // Prevent using this revision
+            document.getElementById('ingreso_revision_id').value = '';
+            document.getElementById('search_revision_code').value = '';
+            return;
+        }
+
+        // Set Hidden Revision ID
+        document.getElementById('ingreso_revision_id').value = data.id;
 
         // Populate fields
         document.getElementById('plate').value = data.plate || '';
@@ -245,7 +616,8 @@ document.getElementById('ingreso-form').addEventListener('submit', async (e) => 
         is_insurance_claim: document.getElementById('is_insurance').checked,
         insurance_company: document.getElementById('insurance_company').value,
         policy_number: document.getElementById('policy_number').value,
-        entry_reason: document.getElementById('entry_reason').value
+        entry_reason: document.getElementById('entry_reason').value,
+        revision_id: document.getElementById('ingreso_revision_id').value
     };
 
     try {
@@ -361,11 +733,29 @@ function toggleParts(checkbox) {
     // Re-calculate not needed here as parts name doesn't affect total currently, but good practice if costs were associated.
 }
 
+function toggleCategoryStatus(checkbox) {
+    const catDiv = checkbox.closest('.estimate-category');
+    const content = catDiv.querySelector('.category-content');
+
+    if (checkbox.checked) {
+        catDiv.style.opacity = '1';
+        // content.classList.remove('hidden'); // Optional: auto open?
+    } else {
+        catDiv.style.opacity = '0.5';
+    }
+    calculateTotal();
+}
+
 function calculateTotal() {
     let total = 0;
-    document.querySelectorAll('.est-amount').forEach(input => {
-        const val = parseFloat(input.value) || 0;
-        total += val;
+    document.querySelectorAll('.estimate-category').forEach(catDiv => {
+        const checkbox = catDiv.querySelector('.cat-enable-check');
+        // Only sum if checkbox exists and is checked
+        if (checkbox && checkbox.checked) {
+            const input = catDiv.querySelector('.est-amount');
+            const val = parseFloat(input.value) || 0;
+            total += val;
+        }
     });
     document.getElementById('est-total-display').textContent = total.toFixed(2);
 }
@@ -509,6 +899,9 @@ async function printAuthorizationReport(id) {
 
         if (estimate.data && Array.isArray(estimate.data)) {
             estimate.data.forEach(item => {
+                // Skip disabled items
+                if (item.enabled === false) return;
+
                 const amount = parseFloat(item.amount) || 0;
                 subtotal += amount;
 
@@ -669,6 +1062,9 @@ async function openApprovalModal(id) {
         let calculatedTotal = 0;
 
         currentApprovalData.forEach((item, index) => {
+            // Skip disabled items from selection list
+            if (item.enabled === false) return;
+
             const div = document.createElement('div');
             div.className = 'approval-item';
 
@@ -776,6 +1172,7 @@ document.getElementById('btn-confirm-approval').addEventListener('click', async 
 });
 
 let editingEstimateId = null;
+let currentEstimateVehicleData = null;
 
 async function loadEstimateForEditing(id) {
     try {
@@ -799,6 +1196,7 @@ async function loadEstimateForEditing(id) {
         document.getElementById('est_owner').textContent = estimate.owner_name || 'Desconocido';
         document.getElementById('est_vehicle_id').value = estimate.vehicle_id;
 
+
         // Populate Categories
         // First reset all
         document.querySelectorAll('.est-desc').forEach(i => i.value = '');
@@ -806,15 +1204,31 @@ async function loadEstimateForEditing(id) {
         document.querySelectorAll('.est-has-parts').forEach(i => i.checked = false);
         document.querySelectorAll('.est-parts-name').forEach(i => i.value = '');
         document.querySelectorAll('.estimate-category .parts-field').forEach(div => div.classList.add('hidden'));
+        document.querySelectorAll('.cat-enable-check').forEach(chk => {
+            chk.checked = false;
+            toggleCategoryStatus(chk);
+        });
 
         // Fill data
         if (estimate.data && Array.isArray(estimate.data)) {
             estimate.data.forEach(item => {
                 const catDiv = document.querySelector(`.estimate-category[data-category="${item.name}"]`);
                 if (catDiv) {
-                    // Open category if needed? user might prefer them closed. Let's keep closed but filled.
-                    // Or open them if they have data?
-                    // catDiv.querySelector('.category-content').classList.remove('hidden');
+                    // Enable/Disable category based on saved state
+                    const checkbox = catDiv.querySelector('.cat-enable-check');
+                    if (checkbox) {
+                        // Default to true for backward compatibility if property missing
+                        const isEnabled = (item.enabled !== undefined) ? item.enabled : true;
+                        checkbox.checked = isEnabled;
+                        toggleCategoryStatus(checkbox);
+
+                        // Always ensure content is visible if it has data? 
+                        // Or maybe rely on toggleCategoryStatus? 
+                        // Let's ensure content panel is accessible if needed, but toggleCategoryStatus handles opacity.
+                        // We also need to ensure the accordion is open if it was active? 
+                        // The user didn't specify accordion behavior, just data persistence.
+                        // We'll keep the logic simple: restore the check.
+                    }
 
                     catDiv.querySelector('.est-desc').value = item.description || '';
                     catDiv.querySelector('.est-amount').value = item.amount || '';
@@ -845,6 +1259,52 @@ async function loadEstimateForEditing(id) {
     } catch (error) {
         console.error(error);
         alert('Error al cargar');
+    }
+}
+
+// Open Revision Full Details Modal
+async function openRevisionDetails(id) {
+    try {
+        const response = await fetch(`/api/revisions/id/${id}`);
+        if (!response.ok) throw new Error('Error al cargar revisión');
+        const rev = await response.json();
+
+        // Populate Fields
+        document.getElementById('view-rev-code').textContent = rev.revision_code || 'Pendiente';
+
+        // Vehicle Info
+        document.getElementById('view-plate').textContent = rev.plate || '';
+        document.getElementById('view-brand-model').textContent = `${rev.brand} ${rev.model}`;
+        document.getElementById('view-year').textContent = rev.year || '';
+        document.getElementById('view-color').textContent = rev.color || '';
+        document.getElementById('view-serial').textContent = rev.serial_number || '';
+        document.getElementById('view-km').textContent = rev.kilometers || '';
+        document.getElementById('view-fuel').textContent = rev.fuel_level || '';
+
+        // Owner Info
+        document.getElementById('view-owner').textContent = rev.owner_name || '';
+        document.getElementById('view-phone').textContent = rev.contact_phone || '';
+        document.getElementById('view-email').textContent = rev.email || '';
+        document.getElementById('view-rfc').textContent = rev.rfc || '';
+
+        // Insurance & Reason
+        document.getElementById('view-reason').textContent = rev.entry_reason || 'Sin motivo especificado';
+
+        const insuranceSection = document.getElementById('view-insurance-section');
+        if (rev.is_insurance_claim) {
+            insuranceSection.classList.remove('hidden');
+            document.getElementById('view-insurance-company').textContent = rev.insurance_company || '';
+            document.getElementById('view-policy').textContent = rev.policy_number || '';
+        } else {
+            insuranceSection.classList.add('hidden');
+        }
+
+        // Show Modal
+        document.getElementById('revision-details-modal').classList.remove('hidden');
+
+    } catch (error) {
+        console.error('Error opening details:', error);
+        alert('Error al cargar los detalles de la revisión');
     }
 }
 
@@ -945,56 +1405,59 @@ function exitEditMode() {
 
 // Save Estimate
 document.getElementById('btn-save-estimate').addEventListener('click', async () => {
-    let vehicleId = document.getElementById('est_vehicle_id').value;
-
-    if (!vehicleId && !currentEstimateVehicleData && !editingEstimateId) {
-        alert('Primero busca un vehículo');
-        return;
-    }
-
-    const categories = [];
-    document.querySelectorAll('.estimate-category').forEach(catDiv => {
-        const name = catDiv.dataset.category;
-        const desc = catDiv.querySelector('.est-desc').value;
-        const amount = parseFloat(catDiv.querySelector('.est-amount').value) || 0;
-        const hasParts = catDiv.querySelector('.est-has-parts').checked;
-        const partsName = catDiv.querySelector('.est-parts-name').value;
-
-        if (desc || amount > 0 || hasParts) {
-            categories.push({
-                name,
-                description: desc,
-                amount,
-                has_parts: hasParts,
-                parts_name: partsName
-            });
-        }
-    });
-
-    if (categories.length === 0) {
-        alert('Ingresa al menos un dato en alguna categoría');
-        return;
-    }
-
-    const totalAmount = parseFloat(document.getElementById('est-total-display').textContent);
-
-    const payload = {
-        vehicle_id: vehicleId, // Can be empty
-        vehicle_details: currentEstimateVehicleData, // Sent if new vehicle
-        total_amount: totalAmount,
-        revision_id: currentEstimateRevisionId,
-        data: categories
-    };
-
     try {
+        let vehicleId = document.getElementById('est_vehicle_id').value;
+        // console.log('Save Estimate Clicked. VehicleID:', vehicleId, 'EditingID:', editingEstimateId);
+
+        if (!vehicleId && !currentEstimateVehicleData && !editingEstimateId) {
+            alert('Primero busca un vehículo');
+            return;
+        }
+
+        const categories = [];
+        document.querySelectorAll('.estimate-category').forEach(catDiv => {
+            const checkbox = catDiv.querySelector('.cat-enable-check');
+            const isEnabled = checkbox ? checkbox.checked : true;
+
+            const name = catDiv.dataset.category;
+            const desc = catDiv.querySelector('.est-desc').value;
+            const amount = parseFloat(catDiv.querySelector('.est-amount').value) || 0;
+            const hasParts = catDiv.querySelector('.est-has-parts').checked;
+            const partsName = catDiv.querySelector('.est-parts-name').value;
+
+            if (desc || amount > 0 || hasParts) {
+                categories.push({
+                    name,
+                    description: desc,
+                    amount,
+                    has_parts: hasParts,
+                    parts_name: partsName,
+                    enabled: isEnabled
+                });
+            }
+        });
+
+        if (categories.length === 0) {
+            alert('Ingresa al menos un dato en alguna categoría');
+            return;
+        }
+
+        const totalAmount = parseFloat(document.getElementById('est-total-display').textContent);
+
+        const payload = {
+            vehicle_id: vehicleId,
+            vehicle_details: currentEstimateVehicleData,
+            total_amount: totalAmount,
+            revision_id: currentEstimateRevisionId,
+            data: categories
+        };
+
         let url = '/api/estimates';
         let method = 'POST';
 
         if (editingEstimateId) {
             url = `/api/estimates/${editingEstimateId}`;
             method = 'PUT';
-            // Validation: PUT might not accept vehicle creation payload, but vehicle info shouldn't change here strictly speaking unless we allow it. 
-            // For now, assume vehicle ID is kept from loading.
         }
 
         const response = await fetch(url, {
@@ -1008,11 +1471,13 @@ document.getElementById('btn-save-estimate').addEventListener('click', async () 
             exitEditMode();
             loadEstimateHistory();
         } else {
-            alert('Error al guardar');
+            const errData = await response.json();
+            console.error('Save Failure:', errData);
+            alert('Error al guardar: ' + (errData.error || 'Desconocido'));
         }
     } catch (error) {
-        console.error(error);
-        alert('Error de conexión');
+        console.error('Global Save Error:', error);
+        alert('Error: ' + error.message);
     }
 });
 
@@ -1171,6 +1636,11 @@ document.getElementById('btn-checkin-appt').addEventListener('click', async () =
 document.getElementById('btn-close-schedule').addEventListener('click', () => {
     document.getElementById('schedule-modal').classList.add('hidden');
 });
+
+// Utility to close modals
+function closeModal(modalId) {
+    document.getElementById(modalId).classList.add('hidden');
+}
 
 document.getElementById('btn-confirm-schedule').addEventListener('click', async () => {
     const dateStr = document.getElementById('schedule-date').value;

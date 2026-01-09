@@ -28,7 +28,32 @@ app.get('/api/vehicles', async (req, res) => {
   const { status } = req.query;
   try {
     let query = `
-      SELECT v.*, s.name as status_name, s.description as status_desc 
+      SELECT v.*, s.name as status_name, s.description as status_desc,
+      (
+        SELECT EXISTS (
+          SELECT 1
+          FROM estimates e, jsonb_array_elements(e.data) as elem
+          WHERE e.vehicle_id = v.id
+          AND lower(elem->>'name') LIKE '%pintura%'
+          AND ((elem->>'enabled')::boolean IS NOT FALSE)
+        )
+      ) as has_paint_work,
+      (
+        SELECT EXISTS (
+          SELECT 1
+          FROM estimates e, jsonb_array_elements(e.data) as elem
+          WHERE e.vehicle_id = v.id
+          AND lower(elem->>'name') LIKE '%laminado%'
+          AND ((elem->>'enabled')::boolean IS NOT FALSE)
+        )
+      ) as has_laminado_work,
+      (
+        SELECT approved_amount > 0 
+        FROM estimates e 
+        WHERE e.vehicle_id = v.id 
+        ORDER BY created_at DESC 
+        LIMIT 1
+      ) as is_estimate_authorized
       FROM vehicles v 
       LEFT JOIN repair_statuses s ON v.current_status_id = s.id
     `;
@@ -41,12 +66,12 @@ app.get('/api/vehicles', async (req, res) => {
       // Robustness: If filtering by 'Ingreso', also exclude vehicles that HAVE revisions 
       // (even if status wasn't updated correctly).
       // Logic: Exclude if a revision exists for this plate created AFTER or roughly same time as vehicle entry.
+      // Logic: Exclude if a revision exists for this plate created AFTER or roughly same time as vehicle entry.
+      // FIX: Removed incorrect DATE logic that was hiding vehicles entered on same day.
       if (status === 'Ingreso') {
-        query += ` AND NOT EXISTS (
-              SELECT 1 FROM revisions r 
-              WHERE LOWER(r.plate) = LOWER(v.plate) 
-              AND r.created_at::date >= v.created_at::date
-          )`;
+        // Previously we filtered out vehicles that had revisions, but that caused issues 
+        // when checking in from a revision on the same day.
+        // For now, we trust the status 'Ingreso' is correct.
       }
     }
 
@@ -60,12 +85,67 @@ app.get('/api/vehicles', async (req, res) => {
   }
 });
 
+// Get Single Vehicle
+app.get('/api/vehicles/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const query = `
+            SELECT v.*, s.name as status_name,
+            (SELECT revision_code FROM revisions r WHERE lower(r.plate) = lower(v.plate) ORDER BY r.created_at DESC LIMIT 1) as revision_code
+            FROM vehicles v 
+            LEFT JOIN repair_statuses s ON v.current_status_id = s.id 
+            WHERE v.id = $1`;
+    const result = await pool.query(query, [id]);
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Vehículo no encontrado' });
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Database Error' });
+  }
+});
+
+// Get Latest Estimate for Vehicle
+app.get('/api/estimates/vehicle/:vehicle_id', async (req, res) => {
+  const { vehicle_id } = req.params;
+  try {
+    // Get the latest estimate for this vehicle
+    const query = `
+            SELECT * FROM estimates 
+            WHERE vehicle_id = $1 
+            ORDER BY created_at DESC 
+            LIMIT 1
+        `;
+    const result = await pool.query(query, [vehicle_id]);
+    if (result.rows.length === 0) {
+      return res.json(null); // No estimate found
+    }
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Database Error' });
+  }
+});
+
 // Create new vehicle
 app.post('/api/vehicles', async (req, res) => {
-  const { plate, model, brand, year, color, is_insurance_claim, insurance_company, policy_number, entry_reason, owner_name, contact_phone, email, rfc } = req.body;
+  const { plate, model, brand, year, color, is_insurance_claim, insurance_company, policy_number, entry_reason, owner_name, contact_phone, email, rfc, revision_id } = req.body;
+
+  const client = await pool.connect();
+
   try {
+    await client.query('BEGIN');
+
+    // Duplicate Check for Revision
+    if (revision_id) {
+      const checkRev = await client.query('SELECT checked_in FROM revisions WHERE id = $1', [revision_id]);
+      if (checkRev.rows.length > 0 && checkRev.rows[0].checked_in) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'El vehículo de esta revisión ya ha sido ingresado.' });
+      }
+    }
+
     // Default status: 'Ingreso'
-    const statusResult = await pool.query("SELECT id FROM repair_statuses WHERE name = 'Ingreso'");
+    const statusResult = await client.query("SELECT id FROM repair_statuses WHERE name = 'Ingreso'");
     const statusId = statusResult.rows[0]?.id || 1;
 
     // Default user: 'recepcion' (ID 1 assumed from seed)
@@ -76,11 +156,25 @@ app.post('/api/vehicles', async (req, res) => {
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18) 
       RETURNING *
     `;
-    const result = await pool.query(query, [plate, model, brand, year, color, req.body.kilometers || null, req.body.serial_number || null, req.body.fuel_level || null, statusId, userId, is_insurance_claim || false, insurance_company, policy_number || null, entry_reason, owner_name, contact_phone, email, rfc]);
+    const result = await client.query(query, [plate, model, brand, year, color, req.body.kilometers || null, req.body.serial_number || null, req.body.fuel_level || null, statusId, userId, is_insurance_claim || false, insurance_company, policy_number || null, entry_reason, owner_name, contact_phone, email, rfc]);
+
+    // Mark Revision as Checked In
+    if (revision_id) {
+      await client.query('UPDATE revisions SET checked_in = TRUE WHERE id = $1', [revision_id]);
+    }
+
+    await client.query('COMMIT');
     res.json(result.rows[0]);
   } catch (err) {
+    await client.query('ROLLBACK');
     console.error(err);
+    // Handle unique constraint violation more gracefully if needed
+    if (err.code === '23505') { // unique_violation
+      return res.status(400).json({ error: 'Error: Ya existe un vehículo registrado con esta placa o datos únicos.' });
+    }
     res.status(500).json({ error: 'Database Error', details: err.message });
+  } finally {
+    client.release();
   }
 });
 
