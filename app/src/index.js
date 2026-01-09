@@ -23,16 +23,25 @@ app.use(express.static(path.join(__dirname, '../public')));
 
 // API Endpoints
 
-// Get all vehicles
+// Get all vehicles (with option filter by status)
 app.get('/api/vehicles', async (req, res) => {
+  const { status } = req.query;
   try {
-    const query = `
+    let query = `
       SELECT v.*, s.name as status_name, s.description as status_desc 
       FROM vehicles v 
       LEFT JOIN repair_statuses s ON v.current_status_id = s.id
-      ORDER BY v.updated_at DESC
     `;
-    const result = await pool.query(query);
+    const params = [];
+
+    if (status) {
+      query += ` WHERE s.name = $1`;
+      params.push(status);
+    }
+
+    query += ` ORDER BY v.updated_at DESC`;
+
+    const result = await pool.query(query, params);
     res.json(result.rows);
   } catch (err) {
     console.error(err);
@@ -109,6 +118,13 @@ app.post('/api/revisions', async (req, res) => {
       RETURNING id, revision_code
     `;
     const result = await pool.query(query, [revisionCode, plate, model, brand, year, color, req.body.kilometers || null, req.body.serial_number || null, req.body.fuel_level || null, userId, is_insurance_claim || false, insurance_company, policy_number || null, entry_reason, owner_name, contact_phone, email, rfc, scheduled_date || null]);
+
+    // Update Vehicle Status to 'En Proceso' (2) if it is 'Ingreso' (1)
+    // This removes it from the "Pending" list
+    await pool.query(
+      "UPDATE vehicles SET current_status_id = 2 WHERE plate = $1 AND current_status_id = 1",
+      [plate]
+    );
 
     res.json({
       id: result.rows[0].id,

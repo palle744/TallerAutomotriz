@@ -33,7 +33,7 @@ function showSection(sectionId) {
 
 async function loadVehicles() {
     try {
-        const response = await fetch('/api/vehicles');
+        const response = await fetch('/api/vehicles?status=Ingreso');
         const vehicles = await response.json();
 
         const tbody = document.getElementById('vehicle-table-body');
