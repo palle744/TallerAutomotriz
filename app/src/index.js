@@ -45,7 +45,7 @@ app.get('/api/vehicles', async (req, res) => {
         query += ` AND NOT EXISTS (
               SELECT 1 FROM revisions r 
               WHERE r.plate = v.plate 
-              AND r.created_at >= v.created_at
+              AND r.created_at >= (v.created_at - INTERVAL '1 hour')
           )`;
       }
     }
