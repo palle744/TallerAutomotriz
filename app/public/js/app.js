@@ -147,64 +147,138 @@ async function executePaintAction() {
     }
 }
 
-// --- LAMINADO LOGIC ---
-async function loadLaminadoVehicles() {
+// Filter Table Function
+function filterTable(tbodyId, searchText) {
+    const filter = searchText.toLowerCase();
+    const rows = document.getElementById(tbodyId).getElementsByTagName('tr');
+
+    for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        const plateCell = row.getElementsByTagName('td')[0]; // Column 0: Placa
+        if (plateCell) {
+            const plateText = plateCell.textContent || plateCell.innerText;
+            const revisionCode = row.getAttribute('data-revision') || ''; // Hidden Revision Code
+
+            if (plateText.toLowerCase().indexOf(filter) > -1 || revisionCode.toLowerCase().indexOf(filter) > -1) {
+                row.style.display = "";
+            } else {
+                row.style.display = "none";
+            }
+        }
+    }
+}
+
+// Helper to add data-search attribute
+function addRevisionAttribute(tr, code) {
+    if (code) {
+        tr.setAttribute('data-revision', code);
+    }
+}
+
+// --- PINTURA LOGIC ---
+async function loadPinturaVehicles() {
     try {
         const response = await fetch('/api/vehicles');
         if (!response.ok) throw new Error('Error loading vehicles');
         const allVehicles = await response.json();
 
-        // Filter: Has laminado work AND not delivered
-        const laminadoVehicles = allVehicles.filter(v => v.has_laminado_work && v.current_status_id !== 6);
+        // Filter: Has paint work AND (Pending OR In Pintura)
+        const paintVehicles = allVehicles.filter(v =>
+            v.has_paint_work && v.current_status_id <= 3
+        );
 
-        const tbody = document.getElementById('laminado-table-body');
+        const tbody = document.getElementById('pintura-table-body');
         tbody.innerHTML = '';
 
-        if (laminadoVehicles.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding: 20px;">No hay vehículos en área de laminado</td></tr>';
+        if (paintVehicles.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding: 20px;">No hay vehículos activos en pintura</td></tr>';
+        } else {
+            paintVehicles.forEach(vehicle => {
+                const tr = document.createElement('tr');
+                addRevisionAttribute(tr, vehicle.last_revision_code); // Add revision code for search
+
+                // Status Presupuesto Badge
+                let authBadge = '<span class="badge warning" style="background-color: #f59e0b; color: white;">Pendiente</span>';
+                if (vehicle.is_estimate_authorized) {
+                    authBadge = '<span class="badge success" style="background-color: #10b981; color: white;">Autorizado</span>';
+                }
+
+                // Actions
+                let actionBtn = '';
+
+                if (vehicle.is_estimate_authorized) {
+                    if (vehicle.current_status_id < 3) {
+                        actionBtn = `<button class="btn-sm" style="background-color: #10b981; color: white; margin-right: 5px;" 
+                                      onclick="requestPaintAction(${vehicle.id}, 'enter')">Ingresar</button>`;
+                    } else if (vehicle.current_status_id === 3) {
+                        actionBtn = `<button class="btn-sm" style="background-color: #ef4444; color: white; margin-right: 5px;" 
+                                      onclick="requestPaintAction(${vehicle.id}, 'finish')">Terminado</button>`;
+                    }
+                }
+
+                tr.innerHTML = `
+                    <td>
+                        <span class="plate-badge">${vehicle.plate}</span>
+                        ${vehicle.last_revision_code ? `<br><small style="color:#666; font-size:10px;">${vehicle.last_revision_code}</small>` : ''}
+                    </td>
+                    <td>${vehicle.brand} ${vehicle.model} (${vehicle.year})</td>
+                    <td>${vehicle.color || '-'}</td>
+                    <td>${new Date(vehicle.created_at).toLocaleDateString()}</td>
+                    <td>${authBadge}</td>
+                    <td style="display: flex; gap: 5px;">
+                        ${actionBtn}
+                        <button class="btn-sm" onclick="openVehicleDetails(${vehicle.id}, 'pintura')">Ver Detalle</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        loadPinturaHistory();
+
+    } catch (error) {
+        console.error('Error loading pintura vehicles:', error);
+        document.getElementById('pintura-table-body').innerHTML = '<tr><td colspan="6" style="text-align:center; color:red;">Error al cargar datos</td></tr>';
+    }
+}
+
+async function loadPinturaHistory() {
+    try {
+        const response = await fetch('/api/reports/paint-history');
+        if (!response.ok) throw new Error('Error loading history');
+        const history = await response.json();
+
+        const tbody = document.getElementById('pintura-history-body');
+        tbody.innerHTML = '';
+
+        if (history.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding: 20px;">No hay historial de pintura</td></tr>';
             return;
         }
 
-        laminadoVehicles.forEach(vehicle => {
+        history.forEach(row => {
             const tr = document.createElement('tr');
 
-            // Status Presupuesto Badge
-            let authBadge = '<span class="badge warning" style="background-color: #f59e0b; color: white;">Pendiente</span>';
-            if (vehicle.is_estimate_authorized) {
-                authBadge = '<span class="badge success" style="background-color: #10b981; color: white;">Autorizado</span>';
-            }
-
-            // Actions
-            let actionBtn = '';
-
-            if (vehicle.is_estimate_authorized) {
-                if (vehicle.current_status_id === 1 || vehicle.current_status_id === 2) {
-                    actionBtn = `<button class="btn-sm" style="background-color: #10b981; color: white; margin-right: 5px;" 
-                                  onclick="requestLaminadoAction(${vehicle.id}, 'enter')">Ingresar</button>`;
-                } else if (vehicle.current_status_id === 7) {
-                    actionBtn = `<button class="btn-sm" style="background-color: #ef4444; color: white; margin-right: 5px;" 
-                                  onclick="requestLaminadoAction(${vehicle.id}, 'finish')">Terminado</button>`;
-                } else if (vehicle.current_status_id === 3 || vehicle.current_status_id === 4 || vehicle.current_status_id === 5) {
-                    actionBtn = '<span class="badge success">Completado</span>';
-                }
-            }
+            // Format timestamps
+            const entryDate = row.entry_date ? new Date(row.entry_date).toLocaleString() : '-';
+            const exitDate = row.exit_date ? new Date(row.exit_date).toLocaleString() : '<span style="color:#f59e0b">En Proceso</span>';
+            const entryUser = row.entry_user || 'Sistema';
+            const exitUser = row.exit_user || '-';
 
             tr.innerHTML = `
-                <td><span class="plate-badge">${vehicle.plate}</span></td>
-                <td>${vehicle.brand} ${vehicle.model} (${vehicle.year})</td>
-                <td>${vehicle.color || '-'}</td>
-                <td>${new Date(vehicle.created_at).toLocaleDateString()}</td>
-                <td>${authBadge}</td>
-                <td style="display: flex; gap: 5px;">
-                    ${actionBtn}
-                    <button class="btn-sm" onclick="openVehicleDetails(${vehicle.id}, 'laminado')">Ver Detalle</button>
-                </td>
+                <td><span class="plate-badge">${row.plate}</span></td>
+                <td>${row.brand} ${row.model}</td>
+                <td>${row.color || '-'}</td>
+                <td>${entryDate}</td>
+                <td>${entryUser}</td>
+                <td>${exitDate}</td>
+                <td>${exitUser}</td>
             `;
             tbody.appendChild(tr);
         });
+
     } catch (error) {
-        console.error('Error loading laminado vehicles:', error);
-        document.getElementById('laminado-table-body').innerHTML = '<tr><td colspan="6" style="text-align:center; color:red;">Error al cargar datos</td></tr>';
+        console.error('Error loading pintura history:', error);
     }
 }
 

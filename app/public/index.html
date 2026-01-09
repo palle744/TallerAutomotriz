@@ -564,7 +564,12 @@
             <!-- Laminado Section -->
             <section id="laminado" class="content-section hidden">
                 <div class="wide-container">
-                    <h3 style="margin-bottom: 20px;">Área de Laminado</h3>
+                    <div
+                        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                        <h3 style="margin: 0;">Área de Laminado</h3>
+                        <input type="text" id="search-laminado-active" placeholder="Buscar placa o revisión..."
+                            class="search-input" onkeyup="filterTable('laminado-table-body', this.value)">
+                    </div>
                     <div class="table-container">
                         <table>
                             <thead>
@@ -588,7 +593,12 @@
             <!-- Pintura Section -->
             <section id="pintura" class="content-section hidden">
                 <div class="wide-container">
-                    <h3 style="margin-bottom: 20px;">Área de Pintura</h3>
+                    <div
+                        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                        <h3 style="margin: 0;">Área de Pintura</h3>
+                        <input type="text" id="search-pintura-active" placeholder="Buscar placa o revisión..."
+                            class="search-input" onkeyup="filterTable('pintura-table-body', this.value)">
+                    </div>
                     <div class="table-container">
                         <table>
                             <thead>
@@ -602,6 +612,31 @@
                                 </tr>
                             </thead>
                             <tbody id="pintura-table-body">
+                                <!-- Populated by JS -->
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div
+                        style="display: flex; justify-content: space-between; align-items: center; margin-top: 50px; margin-bottom: 20px;">
+                        <h3 style="margin: 0;">Historial de Pintura</h3>
+                        <input type="text" id="search-pintura-history" placeholder="Buscar placa..."
+                            class="search-input" onkeyup="filterTable('pintura-history-body', this.value)">
+                    </div>
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Placa</th>
+                                    <th>Vehículo</th>
+                                    <th>Color</th>
+                                    <th>Entrada</th>
+                                    <th>Usuario Entrada</th>
+                                    <th>Salida</th>
+                                    <th>Usuario Salida</th>
+                                </tr>
+                            </thead>
+                            <tbody id="pintura-history-body">
                                 <!-- Populated by JS -->
                             </tbody>
                         </table>
@@ -999,7 +1034,7 @@
         </div>
     </div>
 
-    <script src="js/app.js?v=2"></script>
+    <script src="js/app.js?v=5"></script>
 </body>
 
 </html>

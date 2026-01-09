@@ -101,3 +101,14 @@ CREATE TABLE IF NOT EXISTS vehicle_photos (
     file_path VARCHAR(255) NOT NULL,
     uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Status Logs (History)
+CREATE TABLE IF NOT EXISTS vehicle_status_logs (
+    id SERIAL PRIMARY KEY,
+    vehicle_id INTEGER REFERENCES vehicles(id) ON DELETE CASCADE,
+    from_status_id INTEGER REFERENCES repair_statuses(id),
+    to_status_id INTEGER REFERENCES repair_statuses(id),
+    changed_by INTEGER REFERENCES users(id), -- User who made the change
+    changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    notes TEXT
+);

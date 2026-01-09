@@ -53,7 +53,14 @@ app.get('/api/vehicles', async (req, res) => {
         WHERE e.vehicle_id = v.id 
         ORDER BY created_at DESC 
         LIMIT 1
-      ) as is_estimate_authorized
+      ) as is_estimate_authorized,
+      (
+        SELECT revision_code 
+        FROM revisions r 
+        WHERE r.plate = v.plate 
+        ORDER BY created_at DESC 
+        LIMIT 1
+      ) as last_revision_code
       FROM vehicles v 
       LEFT JOIN repair_statuses s ON v.current_status_id = s.id
     `;
@@ -538,6 +545,115 @@ app.get('/api/reports/daily', async (req, res) => {
   }
 });
 
+
+// Update vehicle status with logging
+app.put('/api/vehicles/:id/status', async (req, res) => {
+  const { id } = req.params;
+  const { status_id, user_id } = req.body; // user_id optional, default to 1
+  const actingUser = user_id || 1;
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // Get current status
+    const currentRes = await client.query('SELECT current_status_id FROM vehicles WHERE id = $1', [id]);
+    const oldStatus = currentRes.rows[0]?.current_status_id;
+
+    // Update Status
+    await client.query('UPDATE vehicles SET current_status_id = $1, updated_at = NOW() WHERE id = $2', [status_id, id]);
+
+    // Log History
+    if (oldStatus !== status_id) {
+      await client.query(
+        'INSERT INTO vehicle_status_logs (vehicle_id, from_status_id, to_status_id, changed_by) VALUES ($1, $2, $3, $4)',
+        [id, oldStatus, status_id, actingUser]
+      );
+    }
+
+    await client.query('COMMIT');
+    res.json({ message: 'Estatus actualizado' });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error(err);
+    res.status(500).json({ error: 'Database Error' });
+  } finally {
+    client.release();
+  }
+});
+
+// Get Paint History
+app.get('/api/reports/paint-history', async (req, res) => {
+  try {
+    // 3 = Pintura status ID
+    const query = `
+      SELECT
+        v.plate, v.brand, v.model, v.color,
+        (SELECT revision_code FROM revisions r WHERE r.plate = v.plate ORDER BY created_at DESC LIMIT 1) as revision_code,
+        l_in.changed_at as entry_date,
+        u_in.username as entry_user,
+        l_out.changed_at as exit_date,
+        u_out.username as exit_user
+      FROM vehicle_status_logs l_in
+      JOIN vehicles v ON l_in.vehicle_id = v.id
+      LEFT JOIN users u_in ON l_in.changed_by = u_in.id
+      LEFT JOIN LATERAL (
+        SELECT changed_at, changed_by
+        FROM vehicle_status_logs
+        WHERE vehicle_id = l_in.vehicle_id
+        AND from_status_id = 3
+        AND changed_at > l_in.changed_at
+        ORDER BY changed_at ASC
+        LIMIT 1
+      ) l_out ON true
+      LEFT JOIN users u_out ON l_out.changed_by = u_out.id
+      WHERE l_in.to_status_id = 3
+      ORDER BY l_in.changed_at DESC
+    `;
+    const result = await pool.query(query);
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Database Error' });
+  }
+});
+
+// Get Laminado History
+app.get('/api/reports/laminado-history', async (req, res) => {
+  try {
+    // 7 = Laminado status ID
+    const query = `
+      SELECT
+        v.plate, v.brand, v.model, v.color,
+        (SELECT revision_code FROM revisions r WHERE r.plate = v.plate ORDER BY created_at DESC LIMIT 1) as revision_code,
+        l_in.changed_at as entry_date,
+        u_in.username as entry_user,
+        l_out.changed_at as exit_date,
+        u_out.username as exit_user
+      FROM vehicle_status_logs l_in
+// ... (rest of query)
+      JOIN vehicles v ON l_in.vehicle_id = v.id
+      LEFT JOIN users u_in ON l_in.changed_by = u_in.id
+      LEFT JOIN LATERAL (
+        SELECT changed_at, changed_by
+        FROM vehicle_status_logs
+        WHERE vehicle_id = l_in.vehicle_id
+        AND from_status_id = 7
+        AND changed_at > l_in.changed_at
+        ORDER BY changed_at ASC
+        LIMIT 1
+      ) l_out ON true
+      LEFT JOIN users u_out ON l_out.changed_by = u_out.id
+      WHERE l_in.to_status_id = 7
+      ORDER BY l_in.changed_at DESC
+    `;
+    const result = await pool.query(query);
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Database Error' });
+  }
+});
 
 // Get statuses
 app.get('/api/statuses', async (req, res) => {
