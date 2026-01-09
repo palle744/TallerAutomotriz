@@ -57,8 +57,9 @@
                     </div>
                 </div>
 
-                <div class="table-container">
-                    <h3>Vehículos Recientes</h3>
+                <!-- Vehicles Table -->
+                <div class="table-container" style="margin-bottom: 2rem;">
+                    <h3>Vehículos Ingresados</h3>
                     <table>
                         <thead>
                             <tr>
@@ -70,6 +71,25 @@
                             </tr>
                         </thead>
                         <tbody id="vehicle-table-body">
+                            <!-- Populated by JS -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Revisions Table -->
+                <div class="table-container">
+                    <h3>Vehículos Revisados</h3>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>ID Revisión</th>
+                                <th>Placa</th>
+                                <th>Marca/Modelo</th>
+                                <th>Fecha Revisión</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="dashboard-revisions-body">
                             <!-- Populated by JS -->
                         </tbody>
                     </table>

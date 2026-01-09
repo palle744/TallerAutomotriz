@@ -18,6 +18,7 @@ function showSection(sectionId) {
 
     if (sectionId === 'dashboard') {
         loadVehicles();
+        loadDashboardRevisions();
     } else if (sectionId === 'daily-entries') {
         loadDailyEntries();
     } else if (sectionId === 'revision-history') {
@@ -56,6 +57,34 @@ async function loadVehicles() {
         });
     } catch (error) {
         console.error('Error loading vehicles:', error);
+    }
+}
+
+async function loadDashboardRevisions() {
+    try {
+        const response = await fetch('/api/revisions');
+        const revisions = await response.json();
+
+        // Optional: limit to recent 5 or 10? User didn't specify, but "recientes" implies it.
+        // Let's show last 10 for now.
+        const recentRevisions = revisions.slice(0, 10);
+
+        const tbody = document.getElementById('dashboard-revisions-body');
+        tbody.innerHTML = '';
+
+        recentRevisions.forEach(rev => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td><strong>${rev.revision_code || '#' + rev.id}</strong></td>
+                <td>${rev.plate}</td>
+                <td>${rev.brand} ${rev.model}</td>
+                <td>${new Date(rev.created_at).toLocaleDateString()}</td>
+                <td><button class="btn-sm" onclick="showSection('revision-history'); loadRevisions();">Ver</button></td>
+            `;
+            tbody.appendChild(tr);
+        });
+    } catch (error) {
+        console.error('Error loading dashboard revisions:', error);
     }
 }
 
