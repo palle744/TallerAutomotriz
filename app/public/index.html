@@ -587,6 +587,31 @@
                             </tbody>
                         </table>
                     </div>
+
+                    <div
+                        style="display: flex; justify-content: space-between; align-items: center; margin-top: 40px; margin-bottom: 20px;">
+                        <h3 style="margin: 0;">Historial de Laminado</h3>
+                        <input type="text" id="search-laminado-history" placeholder="Buscar placa..."
+                            class="search-input" onkeyup="filterTable('laminado-history-body', this.value)">
+                    </div>
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Placa</th>
+                                    <th>Vehículo</th>
+                                    <th>Color</th>
+                                    <th>Entrada</th>
+                                    <th>Usuario Entrada</th>
+                                    <th>Salida</th>
+                                    <th>Usuario Salida</th>
+                                </tr>
+                            </thead>
+                            <tbody id="laminado-history-body">
+                                <!-- Populated by JS -->
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </section>
 
