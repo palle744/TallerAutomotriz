@@ -9,13 +9,33 @@ const port = 3000;
 const isProduction = process.env.DB_HOST && process.env.DB_HOST.includes('amazonaws.com');
 
 const pool = new Pool({
-  user: process.env.DB_USER,
-  host: process.env.DB_HOST,
-  database: process.env.DB_NAME,
-  password: process.env.DB_PASS,
-  port: process.env.DB_PORT,
+  user: process.env.DB_USER || 'postgres',
+  host: process.env.DB_HOST || 'db',
+  database: process.env.DB_NAME || 'crm_db',
+  password: process.env.DB_PASS || 'postgres',
+  port: process.env.DB_PORT || 5432,
   ssl: isProduction ? { rejectUnauthorized: false } : false
 });
+
+// Auto-migration for logs table
+(async () => {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS vehicle_status_logs (
+        id SERIAL PRIMARY KEY,
+        vehicle_id INTEGER REFERENCES vehicles(id) ON DELETE CASCADE,
+        from_status_id INTEGER REFERENCES repair_statuses(id),
+        to_status_id INTEGER REFERENCES repair_statuses(id),
+        changed_by INTEGER REFERENCES users(id),
+        changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        notes TEXT
+      );
+    `);
+    console.log('Verified vehicle_status_logs table.');
+  } catch (err) {
+    console.error('Failed to verify logs table:', err);
+  }
+})();
 
 // Middleware
 app.use(express.json());
