@@ -48,7 +48,13 @@ app.get('/api/vehicles', async (req, res) => {
   const { status } = req.query;
   try {
     let query = `
-      SELECT v.*, s.name as status_name, s.description as status_desc,
+      SELECT v.*, 
+      COALESCE(v.kilometers, r.kilometers) as kilometers,
+      COALESCE(v.serial_number, r.serial_number) as serial_number,
+      COALESCE(v.owner_name, r.owner_name) as owner_name,
+      COALESCE(v.contact_phone, r.contact_phone) as contact_phone,
+      r.revision_code as last_revision_code,
+      s.name as status_name, s.description as status_desc,
       (
         SELECT EXISTS (
           SELECT 1
@@ -73,16 +79,15 @@ app.get('/api/vehicles', async (req, res) => {
         WHERE e.vehicle_id = v.id 
         ORDER BY created_at DESC 
         LIMIT 1
-      ) as is_estimate_authorized,
-      (
-        SELECT revision_code 
-        FROM revisions r 
-        WHERE r.plate = v.plate 
-        ORDER BY created_at DESC 
-        LIMIT 1
-      ) as last_revision_code
+      ) as is_estimate_authorized
       FROM vehicles v 
       LEFT JOIN repair_statuses s ON v.current_status_id = s.id
+      LEFT JOIN LATERAL (
+        SELECT * FROM revisions r
+        WHERE LOWER(r.plate) = LOWER(v.plate)
+        ORDER BY r.created_at DESC
+        LIMIT 1
+      ) r ON true
     `;
     const params = [];
 
@@ -92,7 +97,6 @@ app.get('/api/vehicles', async (req, res) => {
 
       // Robustness: If filtering by 'Ingreso', also exclude vehicles that HAVE revisions 
       // (even if status wasn't updated correctly).
-      // Logic: Exclude if a revision exists for this plate created AFTER or roughly same time as vehicle entry.
       // Logic: Exclude if a revision exists for this plate created AFTER or roughly same time as vehicle entry.
       // FIX: Removed incorrect DATE logic that was hiding vehicles entered on same day.
       if (status === 'Ingreso') {
@@ -330,14 +334,19 @@ app.post('/api/revisions/:id/checkin', async (req, res) => {
 
     // 2. Insert into Vehicles (Ingreso)
     const insertQuery = `
-      INSERT INTO vehicles (plate, model, brand, year, color, current_status_id, registered_by, owner_name, contact_phone, email, rfc)
-      VALUES ($1, $2, $3, $4, $5, 1, $6, $7, $8, $9, $10)
+      INSERT INTO vehicles (
+        plate, model, brand, year, color, current_status_id, registered_by, 
+        owner_name, contact_phone, email, rfc,
+        kilometers, serial_number, fuel_level, is_insurance_claim, insurance_company, policy_number, entry_reason
+      )
+      VALUES ($1, $2, $3, $4, $5, 1, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
       RETURNING id
     `;
     const result = await pool.query(insertQuery, [
       rev.plate, rev.model, rev.brand, rev.year, rev.color,
       rev.registered_by || 1,
-      rev.owner_name, rev.contact_phone, rev.email, rev.rfc
+      rev.owner_name, rev.contact_phone, rev.email, rev.rfc,
+      rev.kilometers, rev.serial_number, rev.fuel_level, rev.is_insurance_claim, rev.insurance_company, rev.policy_number, rev.entry_reason
     ]);
 
     // 3. Mark Revision as Checked-in
@@ -569,7 +578,7 @@ app.get('/api/reports/daily', async (req, res) => {
 // Update vehicle status with logging
 app.put('/api/vehicles/:id/status', async (req, res) => {
   const { id } = req.params;
-  const { status_id, user_id } = req.body; // user_id optional, default to 1
+  const { status_id, user_id, notes } = req.body; // user_id optional, default to 1, notes added
   const actingUser = user_id || 1;
 
   const client = await pool.connect();
@@ -586,8 +595,8 @@ app.put('/api/vehicles/:id/status', async (req, res) => {
     // Log History
     if (oldStatus !== status_id) {
       await client.query(
-        'INSERT INTO vehicle_status_logs (vehicle_id, from_status_id, to_status_id, changed_by) VALUES ($1, $2, $3, $4)',
-        [id, oldStatus, status_id, actingUser]
+        'INSERT INTO vehicle_status_logs (vehicle_id, from_status_id, to_status_id, changed_by, notes) VALUES ($1, $2, $3, $4, $5)',
+        [id, oldStatus, status_id, actingUser, notes || null]
       );
     }
 
@@ -599,6 +608,113 @@ app.put('/api/vehicles/:id/status', async (req, res) => {
     res.status(500).json({ error: 'Database Error' });
   } finally {
     client.release();
+  }
+});
+
+
+// --- PAYMENTS API ---
+
+// Create Payment
+// --- Capacity Management ---
+app.get('/api/capacities', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM daily_capacities');
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error fetching capacities' });
+  }
+});
+
+app.post('/api/capacities', async (req, res) => {
+  const { date, capacity, is_closed } = req.body;
+  if (!date || !capacity) {
+    return res.status(400).json({ error: 'Date and Capacity are required' });
+  }
+
+  try {
+    const result = await pool.query(
+      `INSERT INTO daily_capacities (date, capacity, is_closed) 
+       VALUES ($1, $2, $3) 
+       ON CONFLICT (date) 
+       DO UPDATE SET capacity = $2, is_closed = $3, updated_at = CURRENT_TIMESTAMP 
+       RETURNING *`,
+      [date, capacity, is_closed || false]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error saving capacity' });
+  }
+});
+
+// --- Payments ---
+app.post('/api/payments', async (req, res) => {
+  const { vehicle_id, amount, payment_method, notes } = req.body;
+  try {
+    // 1. Calculate current balance
+    const estRes = await pool.query('SELECT approved_amount FROM estimates WHERE vehicle_id = $1 ORDER BY created_at DESC LIMIT 1', [vehicle_id]);
+    const totalEstimate = estRes.rows.length > 0 ? parseFloat(estRes.rows[0].approved_amount || 0) : 0;
+
+    const payRes = await pool.query('SELECT amount FROM payments WHERE vehicle_id = $1', [vehicle_id]);
+    const totalPaid = payRes.rows.reduce((sum, row) => sum + parseFloat(row.amount), 0);
+
+    const currentBalance = totalEstimate - totalPaid;
+
+    // 2. Validate
+    if (currentBalance <= 0) {
+      return res.status(400).json({ error: 'Este vehículo ya no tiene saldo pendiente. Debe reingresar para generar nuevos cargos.' });
+    }
+
+    if (amount > currentBalance) {
+      return res.status(400).json({ error: `El monto excede el saldo pendiente. Saldo actual: $${currentBalance.toFixed(2)}` });
+    }
+
+    const result = await pool.query(
+      'INSERT INTO payments (vehicle_id, amount, payment_method, notes) VALUES ($1, $2, $3, $4) RETURNING *',
+      [vehicle_id, amount, payment_method, notes]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error creating payment' });
+  }
+});
+
+// Get Payments for Vehicle
+app.get('/api/payments/vehicle/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const payments = await pool.query('SELECT * FROM payments WHERE vehicle_id = $1 ORDER BY created_at DESC', [id]);
+
+    // Calculate totals
+    const totalPaid = payments.rows.reduce((sum, p) => sum + parseFloat(p.amount), 0);
+
+    // Get authorized estimate total and details
+    const estRes = await pool.query(`
+      SELECT approved_amount, data
+      FROM estimates 
+      WHERE vehicle_id = $1
+      ORDER BY created_at DESC
+      LIMIT 1
+    `, [id]);
+
+    const estimateData = estRes.rows[0] || {};
+    const totalEstimate = parseFloat(estimateData.approved_amount || 0);
+    const estimateDetails = estimateData.data || {};
+
+    res.json({
+      history: payments.rows,
+      summary: {
+        total_paid: totalPaid,
+        total_estimate: totalEstimate,
+        balance: totalEstimate - totalPaid,
+        estimate_details: estimateDetails // Pass full details for ticket
+      }
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error fetching payments' });
   }
 });
 
@@ -693,6 +809,41 @@ app.get('/test-db', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).send('Database Error');
+  }
+});
+
+// Status History Endpoint
+app.get('/api/vehicles/:id/status-history', async (req, res) => {
+  const { id } = req.params;
+  try {
+    // 1. Get Creation Info
+    const metaQuery = `
+      SELECT v.created_at, u.username as created_by 
+      FROM vehicles v
+      LEFT JOIN users u ON v.registered_by = u.id
+      WHERE v.id = $1
+    `;
+    const metaRes = await pool.query(metaQuery, [id]);
+    const meta = metaRes.rows[0];
+
+    // 2. Get Logs
+    const logQuery = `
+      SELECT l.*, u.username as changed_by_name, s.name as status_name
+      FROM vehicle_status_logs l
+      LEFT JOIN users u ON l.changed_by = u.id
+      LEFT JOIN repair_statuses s ON l.to_status_id = s.id
+      WHERE l.vehicle_id = $1
+      ORDER BY l.changed_at ASC
+    `;
+    const logRes = await pool.query(logQuery, [id]);
+
+    res.json({
+      created: meta,
+      logs: logRes.rows
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'History Error' });
   }
 });
 

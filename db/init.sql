@@ -112,3 +112,14 @@ CREATE TABLE IF NOT EXISTS vehicle_status_logs (
     changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     notes TEXT
 );
+
+-- Payments Table
+CREATE TABLE IF NOT EXISTS payments (
+    id SERIAL PRIMARY KEY,
+    vehicle_id INTEGER REFERENCES vehicles(id) ON DELETE CASCADE,
+    amount DECIMAL(10, 2) NOT NULL,
+    payment_method VARCHAR(50), -- Efectivo, Tarjeta, Transferencia, Cheque
+    notes TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_by INTEGER REFERENCES users(id) DEFAULT 1
+);

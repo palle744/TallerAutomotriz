@@ -30,8 +30,21 @@ function showSection(sectionId) {
         loadLaminadoVehicles();
     } else if (sectionId === 'pintura') {
         loadPinturaVehicles();
+    } else if (sectionId === 'salida-view') {
+        // Clear search on entry
+        document.getElementById('salida-search-input').value = '';
+        document.getElementById('salida-result-card').classList.add('hidden');
+    } else if (sectionId === 'pagos-view') {
+        document.getElementById('pagos-search-input').value = '';
+        document.getElementById('pagos-dashboard').classList.add('hidden');
+        document.getElementById('pagos-error-msg').style.display = 'none';
+        currentPagosVehicleId = null;
     } else if (sectionId === 'calendar') {
         loadCalendar();
+    } else if (sectionId === 'status-view') {
+        document.getElementById('status-search-input').value = '';
+        document.getElementById('status-result-card').classList.add('hidden');
+        document.getElementById('status-loading').classList.add('hidden');
     }
 }
 
@@ -172,6 +185,335 @@ function filterTable(tbodyId, searchText) {
 function addRevisionAttribute(tr, code) {
     if (code) {
         tr.setAttribute('data-revision', code);
+    }
+}
+
+
+// --- SALIDA LOGIC ---
+let currentSalidaVehicleId = null;
+
+async function performSalidaSearch() {
+    const query = document.getElementById('salida-search-input').value.trim().toLowerCase();
+    const errorMsg = document.getElementById('salida-error-msg');
+    const card = document.getElementById('salida-result-card');
+
+    errorMsg.style.display = 'none';
+    card.classList.add('hidden');
+    currentSalidaVehicleId = null;
+
+    if (!query) return;
+
+    try {
+        // Fetch all active vehicles (or search endpoint if optimized)
+        // For simplicity, we filter client side from a fresh fetch of all vehicles
+        const response = await fetch('/api/vehicles');
+        if (!response.ok) throw new Error('Error al conectar con servidor');
+        const vehicles = await response.json();
+
+        // Find match: Check Plate or Revision Code
+        // User wants "Placa or ID Revision"
+        const vehicle = vehicles.find(v =>
+            v.plate.toLowerCase() === query ||
+            (v.last_revision_code && v.last_revision_code.toLowerCase() === query)
+        );
+
+        if (!vehicle) {
+            errorMsg.textContent = 'Vehículo no encontrado o ya entregado.';
+            errorMsg.style.display = 'block';
+            return;
+        }
+
+        // Show Data
+        currentSalidaVehicleId = vehicle.id;
+
+        document.getElementById('salida-plate').textContent = vehicle.plate;
+        document.getElementById('salida-desc').textContent = `${vehicle.brand} ${vehicle.model}`;
+
+        // Status Badge
+        const badge = document.getElementById('salida-status-badge');
+        badge.textContent = vehicle.status_name || 'Desconocido';
+        // Reset classes
+        badge.className = 'badge';
+        // Simple color logic
+        if (vehicle.current_status_id === 5) badge.classList.add('success');
+        else if (vehicle.current_status_id === 3) badge.classList.add('warning');
+        else { badge.style.backgroundColor = '#6b7280'; badge.style.color = 'white'; }
+
+        document.getElementById('salida-color').textContent = vehicle.color || '-';
+        document.getElementById('salida-year').textContent = vehicle.year || '-';
+        document.getElementById('salida-vin').textContent = vehicle.serial_number || '-';
+        document.getElementById('salida-km').textContent = vehicle.kilometers || '-';
+
+        // Owner Info (Need to fetch details if not fully in summary list, but let's see if /api/vehicles returns it)
+        // The /api/vehicles usually returns joined generic info.
+        // If "owner_name" is present. Based on `index.js`, the query joins `clients`.
+        // Let's assume `client_name` and `client_phone` come from the API.
+        document.getElementById('salida-owner').textContent = vehicle.owner_name || 'No registrado';
+        document.getElementById('salida-phone').textContent = vehicle.contact_phone || '-';
+
+        card.classList.remove('hidden');
+
+    } catch (error) {
+        console.error(error);
+        errorMsg.textContent = 'Error al buscar datos.';
+        errorMsg.style.display = 'block';
+    }
+}
+
+function confirmSalidaTransaction() {
+    if (!currentSalidaVehicleId) return;
+
+    if (!confirm('¿Confirma que el vehículo sale del taller y se marca como Entregado?')) return;
+
+    executeSalidaUpdate(currentSalidaVehicleId);
+}
+
+async function executeSalidaUpdate(id) {
+    try {
+        const res = await fetch(`/api/vehicles/${id}/status`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status_id: 6 }) // 6 = Entregado
+        });
+
+        if (!res.ok) throw new Error('Error al actualizar estatus');
+
+        alert('¡Salida registrada exitosamente!');
+
+        // Reset view
+        document.getElementById('salida-search-input').value = '';
+        document.getElementById('salida-result-card').classList.add('hidden');
+        currentSalidaVehicleId = null;
+
+    } catch (error) {
+        console.error(error);
+        alert('Error al registrar la salida');
+    }
+}
+
+
+// --- PAGOS MODULE ---
+
+let currentPagosVehicleId = null;
+
+async function searchPagosVehicle() {
+    const term = document.getElementById('pagos-search-input').value.trim();
+    if (!term) return alert('Ingresa una placa');
+
+    try {
+        // Reuse vehicle search (by plate) logic. Assuming search returns list.
+        // Or specific endpoint. Let's use /api/vehicles/search/:plate
+        // Actually /api/vehicles with filtering?
+        // Let's iterate all vehicles for now or use the generic search.
+
+        // Better: GET /api/vehicles?status=... No, we need arbitrary search.
+        // Let's try to match from local list? No, server search is better.
+        // I'll reuse the logic from Salida search?
+
+        // Wait, app.js doesn't have a generic search endpoint usage exposed well.
+        // I'll implement a simple fetch.
+        // However, I see performSalidaSearch logic uses `vehicles.find`. 
+        // I should probably fetch data from server.
+        // Let's try fetching all for now (inefficient but safe consistent logic) OR specific endpoint.
+
+        const response = await fetch('/api/vehicles');
+        const vehicles = await response.json();
+
+        // Find match
+        const vehicle = vehicles.find(v =>
+            v.plate.toLowerCase() === term.toLowerCase() ||
+            (v.last_revision_code && v.last_revision_code.toLowerCase() === term.toLowerCase())
+        );
+
+        if (!vehicle) {
+            alert('Vehículo no encontrado');
+            return;
+        }
+
+        currentPagosVehicleId = vehicle.id;
+        currentPagosVehicleObj = vehicle;
+        loadPagosData(vehicle.id);
+
+    } catch (error) {
+        console.error(error);
+        alert('Error al buscar vehículo');
+    }
+}
+
+
+// Global storage for current vehicle details needed for ticket
+let currentPagosDetails = null;
+let currentPagosVehicleObj = null;
+
+async function loadPagosData(vehicleId) {
+    try {
+        const res = await fetch(`/api/payments/vehicle/${vehicleId}`);
+        const data = await res.json();
+
+        currentPagosDetails = {
+            summary: data.summary,
+            history: data.history
+        };
+
+        // Check Authorization
+        if (data.summary.total_estimate <= 0) {
+            document.getElementById('pagos-dashboard').classList.add('hidden');
+            const errorMsg = document.getElementById('pagos-error-msg');
+            errorMsg.textContent = "El presupuesto aún no se ha autorizado";
+            errorMsg.style.display = 'block';
+            return;
+        }
+
+        // Show Dashboard if Authorized
+        document.getElementById('pagos-dashboard').classList.remove('hidden');
+        document.getElementById('pagos-error-msg').style.display = 'none';
+
+        // 1. Update Summary
+        document.getElementById('pagos-total-est').textContent = `$${data.summary.total_estimate.toFixed(2)}`;
+        document.getElementById('pagos-total-paid').textContent = `$${data.summary.total_paid.toFixed(2)}`;
+
+        const bal = data.summary.balance;
+        const balanceEl = document.getElementById('pagos-balance');
+        balanceEl.textContent = `$${bal.toFixed(2)}`;
+        balanceEl.style.color = bal > 0 ? '#ef4444' : '#10b981'; // Red if debt, Green if paid/surplus
+
+        // 2. Update Table
+        const tbody = document.getElementById('pagos-history-body');
+        tbody.innerHTML = '';
+
+        if (data.history.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:10px;">Sin pagos registrados</td></tr>';
+        } else {
+            data.history.forEach((p, index) => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td style="padding: 8px; border-bottom: 1px solid #eee;">${new Date(p.created_at).toLocaleDateString()}</td>
+                    <td style="padding: 8px; border-bottom: 1px solid #eee;">${p.payment_method}</td>
+                    <td style="padding: 8px; border-bottom: 1px solid #eee; color:#6b7280; font-size:0.9em;">${p.notes || '-'}</td>
+                    <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: right; font-weight:bold;">$${parseFloat(p.amount).toFixed(2)}</td>
+                    <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: center;">
+                        <button onclick="printPaymentTicket(${index})" style="background:#3b82f6; color:white; border:none; border-radius:4px; padding: 5px 10px; cursor:pointer;">Ticket</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+    } catch (error) {
+        console.error('Error loading payments:', error);
+    }
+}
+
+async function printPaymentTicket(index) {
+    if (!currentPagosDetails || !currentPagosVehicleObj) return alert('Datos no disponibles');
+
+    const payment = currentPagosDetails.history[index];
+    const est = currentPagosDetails.summary.estimate_details || {};
+    const vehicle = currentPagosVehicleObj;
+
+    // Use approved data if available, otherwise just data
+    const estData = est;
+
+    // Build Concept HTML from Estimate
+    let conceptHtml = '<ul style="padding-left: 20px; margin: 10px 0;">';
+    if (Array.isArray(estData)) {
+        estData.forEach(item => {
+            if (item.enabled === false) return;
+            conceptHtml += `
+                <li style="margin-bottom: 5px;">
+                    <div><strong>${item.name}</strong> - $${parseFloat(item.amount).toFixed(2)}</div>
+                    <div style="font-size: 10px; color: #555; font-style: italic;">${item.description || ''}</div>
+                </li>`;
+        });
+    } else {
+        conceptHtml += '<li>Sin detalles de presupuesto</li>';
+    }
+    conceptHtml += '</ul>';
+
+    const win = window.open('', '', 'width=400,height=600');
+    win.document.write(`
+        <html>
+        <head>
+            <title>Ticket de Pago</title>
+            <style>
+                body { font-family: monospace; padding: 20px; font-size: 12px; }
+                h2 { text-align: center; border-bottom: 1px dashed black; padding-bottom: 10px; }
+                .info { margin-bottom: 10px; }
+                .total { font-weight: bold; font-size: 14px; text-align: right; margin-top: 10px; border-top: 1px dashed black; padding-top: 5px;}
+                .footer { text-align: center; margin-top: 20px; font-size: 10px; }
+            </style>
+        </head>
+        <body>
+            <h2>AutoFix CRM</h2>
+            <div class="info">
+                <p><strong>Fecha:</strong> ${new Date(payment.created_at).toLocaleString()}</p>
+                <p><strong>Folio Pago:</strong> #${payment.id}</p>
+                 <hr style="border-top: 1px dashed black;">
+                <p><strong>Cliente:</strong> ${vehicle.owner_name || 'Publico'}</p>
+                <p><strong>Vehículo:</strong> ${vehicle.brand} ${vehicle.model} (${vehicle.plate})</p>
+                <p><strong>VIN:</strong> ${vehicle.serial_number || '-'}</p>
+            </div>
+            
+            <div class="info">
+                <strong>Concepto (Presupuesto):</strong>
+                ${conceptHtml}
+            </div>
+
+            <div class="total">
+                <p>Monto Pagado: $${parseFloat(payment.amount).toFixed(2)}</p>
+                <p style="font-size:12px; font-weight:normal;">Restante: $${(currentPagosDetails.summary.balance).toFixed(2)}</p>
+            </div>
+            
+            <div class="info">
+                <p><strong>Método:</strong> ${payment.payment_method}</p>
+                <p><strong>Notas:</strong> ${payment.notes || '-'}</p>
+            </div>
+
+            <div class="footer">
+                <p>Gracias por su preferencia</p>
+            </div>
+            <script>window.print();</script>
+        </body>
+        </html>
+    `);
+    win.document.close();
+}
+
+async function registerPayment() {
+    if (!currentPagosVehicleId) return;
+
+    const amount = document.getElementById('pay-amount').value;
+    const method = document.getElementById('pay-method').value;
+    const notes = document.getElementById('pay-notes').value;
+
+    if (!amount || parseFloat(amount) <= 0) {
+        alert('Ingresa un monto válido');
+        return;
+    }
+
+    try {
+        const res = await fetch('/api/payments', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                vehicle_id: currentPagosVehicleId,
+                amount: amount,
+                payment_method: method,
+                notes: notes
+            })
+        });
+
+        if (res.ok) {
+            alert('Pago registrado');
+            document.getElementById('pay-amount').value = '';
+            document.getElementById('pay-notes').value = '';
+            loadPagosData(currentPagosVehicleId); // Refresh
+        } else {
+            alert('Error al guardar pago');
+        }
+    } catch (error) {
+        console.error(error);
+        alert('Error de conexión');
     }
 }
 
@@ -893,7 +1235,12 @@ function renderEstimatesTable(estimates) {
             <td>${est.created_by_user || 'Sistema'}</td>
             <td>$${parseFloat(est.total_amount).toFixed(2)}</td>
             <td>$${approvedAmount}</td>
-            <td>${est.approval_notes || '-'}</td>
+            <td>
+                ${est.approval_notes && est.approval_notes.length > 5 ?
+                `<button onclick="viewApprovalNotes('${est.id}')" class="btn-sm" style="font-size: 0.8em; padding: 4px 8px;">Ver Notas</button>` :
+                (est.approval_notes || '-')
+            }
+            </td>
         `;
 
         // Actions
@@ -929,7 +1276,15 @@ function renderEstimatesTable(estimates) {
         statusBtn.style.borderRadius = '4px';
         statusBtn.style.cursor = 'pointer';
         statusBtn.innerHTML = statusIcon;
-        statusBtn.onclick = () => openApprovalModal(est.id);
+
+        if (isApproved) {
+            statusBtn.style.opacity = '0.6';
+            statusBtn.style.cursor = 'not-allowed';
+            statusBtn.onclick = () => showAlert('El presupuesto ya está autorizado.');
+        } else {
+            statusBtn.onclick = () => openApprovalModal(est.id);
+        }
+
         actionsTd.appendChild(statusBtn);
 
         row.appendChild(actionsTd); // Append the constructed actions TD
@@ -937,27 +1292,14 @@ function renderEstimatesTable(estimates) {
         tbody.appendChild(row);
     });
 
-    // Add Listeners
-    document.querySelectorAll('.btn-load').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            const row = e.target.closest('tr');
-            loadEstimateForEditing(row.dataset.id);
-        });
-    });
-
-    document.querySelectorAll('.btn-status').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            const row = e.target.closest('tr');
-            openApprovalModal(row.dataset.id);
-        });
-    });
+    // Listeners are already attached to buttons during creation
 }
 
 async function printAuthorizationReport(id) {
     // Open window immediately to avoid popup blockers
     const printWindow = window.open('', '_blank');
     if (!printWindow) {
-        alert('Por favor permite las ventanas emergentes (pop-ups) para generar el reporte.');
+        showAlert('Por favor permite las ventanas emergentes (pop-ups) para generar el reporte.');
         return;
     }
 
@@ -1252,14 +1594,14 @@ async function loadEstimateForEditing(id) {
     try {
         const response = await fetch(`/api/estimates/${id}`);
         if (!response.ok) {
-            alert('Error al cargar presupuesto');
+            showAlert('Error al cargar presupuesto');
             return;
         }
         const estimate = await response.json();
 
         // Check if Approved
         if (parseFloat(estimate.approved_amount) > 0) {
-            alert('No se puede modificar un presupuesto ya autorizado.');
+            showAlert('No se puede modificar un presupuesto ya autorizado.');
             return;
         }
 
@@ -1557,12 +1899,13 @@ document.getElementById('btn-save-estimate').addEventListener('click', async () 
 
 // Calendar Logic
 let calendar;
+let currentCapacities = {}; // { 'YYYY-MM-DD': limit }
+let currentCalendarRevisions = [];
 
 function loadCalendar() {
     const calendarEl = document.getElementById('calendar-el');
     if (!calendarEl) return;
 
-    // Wait for element to be visible
     setTimeout(() => {
         if (!calendar) {
             calendar = new FullCalendar.Calendar(calendarEl, {
@@ -1579,12 +1922,102 @@ function loadCalendar() {
                     week: 'Semana',
                     day: 'Día'
                 },
+                datesSet: renderDayCapacityBars, // Update bars on view change
+                // Use dayCellDidMount (v5/v6) for cell customization
+                dayCellDidMount: function (arg) {
+                    const dateStr = arg.date.toISOString().split('T')[0]; // YYYY-MM-DD
+
+                    // 1. Calculate Occupancy
+                    // We need revisions to count. But events are fetched async? 
+                    // To do this robustly, we might need to pre-fetch or recalculate on 'events' success.
+                    // However, 'events' callback runs after render? 
+                    // Actually, let's do the coloring in eventsSet or after fetch.
+                    // For now, let's just inject the "Config" button. Color update will happen in 'events' successCallback or separate update function.
+
+                    // Create Config Button
+                    const configBtn = document.createElement('div');
+                    configBtn.innerHTML = '⚙️';
+                    configBtn.className = 'capacity-config-btn';
+                    configBtn.title = 'Configurar Capacidad';
+                    configBtn.style.position = 'absolute';
+                    configBtn.style.top = '4px';
+                    configBtn.style.left = '4px'; // Move to left to avoid blocking date
+                    configBtn.style.cursor = 'pointer';
+                    configBtn.style.fontSize = '12px';
+                    configBtn.style.background = 'rgba(255,255,255,0.7)';
+                    configBtn.style.borderRadius = '4px';
+                    configBtn.style.padding = '2px 4px';
+                    configBtn.style.zIndex = '10';
+
+                    configBtn.onclick = (e) => {
+                        e.stopPropagation(); // Prevent dateClick
+                        openCapacityModal(dateStr);
+                    };
+
+                    // Ensure relative positioning on the cell itself
+                    arg.el.style.position = 'relative';
+
+                    const frame = arg.el.querySelector('.fc-daygrid-day-frame');
+                    if (frame) {
+                        frame.appendChild(configBtn);
+                    } else {
+                        // Fallback
+                        arg.el.appendChild(configBtn);
+                    }
+
+                    // Mark Past Days with an "X"
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+                    const cellDate = new Date(dateStr + 'T00:00:00');
+
+                    if (cellDate < today) {
+                        // Find the inner frame to ensure content is contained
+                        const frame = arg.el.querySelector('.fc-daygrid-day-frame');
+                        if (frame) {
+                            frame.style.overflow = 'hidden'; // prevent bleeding
+                            frame.style.position = 'relative';
+
+                            const xMark = document.createElement('div');
+                            xMark.textContent = '✕';
+                            xMark.style.position = 'absolute';
+                            xMark.style.top = '50%';
+                            xMark.style.left = '50%';
+                            xMark.style.transform = 'translate(-50%, -50%)';
+                            xMark.style.fontSize = '80px'; // Keep large but contained
+                            xMark.style.lineHeight = '1';
+                            xMark.style.color = 'rgba(0, 0, 0, 0.05)';
+                            xMark.style.fontWeight = 'bold';
+                            xMark.style.pointerEvents = 'none';
+                            xMark.style.zIndex = '0'; // Behind events if possible, or low z-index
+
+                            frame.appendChild(xMark);
+                            frame.style.backgroundColor = '#f9fafb';
+                        }
+                    }
+                },
                 events: async function (info, successCallback, failureCallback) {
                     try {
-                        const response = await fetch('/api/revisions');
-                        const revisions = await response.json();
+                        // 1. Fetch Revisions
+                        const revResponse = await fetch('/api/revisions');
+                        const revisions = await revResponse.json();
+                        currentCalendarRevisions = revisions;
 
-                        // Filter only revisions with scheduled_date
+                        // 2. Fetch Capacities
+                        const capResponse = await fetch('/api/capacities');
+                        const capacities = await capResponse.json();
+
+                        // Map capacities for easy lookup
+                        currentCapacities = {};
+                        capacities.forEach(c => {
+                            // c.date is ISO string likely derived from Date column
+                            const d = c.date.split('T')[0];
+                            currentCapacities[d] = {
+                                capacity: c.capacity,
+                                is_closed: c.is_closed
+                            };
+                        });
+
+                        // 3. Process Events
                         const events = revisions
                             .filter(rev => rev.scheduled_date)
                             .map(rev => {
@@ -1593,18 +2026,54 @@ function loadCalendar() {
                                     title: `${rev.plate} - ${rev.model}`,
                                     start: rev.scheduled_date,
                                     allDay: false,
-                                    backgroundColor: isCheckedIn ? '#10b981' : '#3b82f6', // Green if checked in, Blue otherwise
+                                    backgroundColor: isCheckedIn ? '#10b981' : '#3b82f6',
                                     borderColor: isCheckedIn ? '#059669' : '#2563eb',
                                     extendedProps: { revisionId: rev.id }
                                 };
                             });
+
                         successCallback(events);
+
+                        // 4. Update Day Capacity Bars after events loaded
+                        renderDayCapacityBars();
+
                     } catch (error) {
-                        console.error('Error fetching events', error);
+                        console.error('Error fetching calendar data', error);
                         failureCallback(error);
                     }
                 },
                 dateClick: function (info) {
+                    const clickedDate = new Date(info.dateStr);
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+                    // Parsing issue safety:
+                    const clickedDateLocal = new Date(info.dateStr + 'T00:00:00');
+                    if (clickedDateLocal < today) {
+                        alert('No se pueden agendar citas en fechas pasadas.');
+                        return;
+                    }
+
+                    // Check if Full or Closed
+                    const dateStr = info.dateStr;
+                    const limit = currentCapacities[dateStr]?.capacity || 20;
+                    const isClosed = currentCapacities[dateStr]?.is_closed || false;
+
+                    if (isClosed) {
+                        // Alert but allow opening to see/cancel events if any exist (force by user)
+                        alert('Este día está marcado como inhábil (cerrado).');
+                        // return; // REMOVED: Allow interaction to manage existing appointments
+                    }
+
+                    const count = currentCalendarRevisions.filter(r => r.scheduled_date && r.scheduled_date.startsWith(dateStr)).length;
+
+                    if (count >= limit) {
+                        alert(`Día completo. Capacidad máxima (${limit}) alcanzada.`);
+                        // return; // Uncomment to strict block, users usually want override or just warning? 
+                        // User requirement: "rojo si el dia ya esta completo". Implicitly implies blocking?
+                        // Let's block it to enforce the rule.
+                        return;
+                    }
+
                     document.getElementById('schedule-date').value = info.dateStr;
                     document.getElementById('schedule-revision-id').value = '';
                     document.getElementById('schedule-time').value = '';
@@ -1627,23 +2096,31 @@ function loadCalendar() {
                         document.getElementById('det-color').textContent = details.color || '-';
                         document.getElementById('det-owner').textContent = details.owner_name;
                         document.getElementById('det-phone').textContent = details.contact_phone;
-
                         document.getElementById('det-revision-id').value = details.id;
 
-                        // Toggle Cancel Button
                         const btnCancel = document.getElementById('btn-cancel-appt');
-                        if (details.checked_in) {
-                            btnCancel.style.display = 'none';
-                        } else {
-                            btnCancel.style.display = 'block';
-                        }
+                        btnCancel.style.display = details.checked_in ? 'none' : 'block';
 
-                        // Format Date
                         const dateObj = new Date(details.scheduled_date || details.created_at);
                         document.getElementById('det-date').textContent = dateObj.toLocaleString();
 
-                        document.getElementById('det-reason').textContent = details.entry_reason || 'Sin especificar';
+                        const btnCheckin = document.getElementById('btn-checkin-appt');
+                        const today = new Date();
+                        const isToday = dateObj.toDateString() === today.toDateString();
 
+                        if (details.checked_in || !isToday) {
+                            btnCheckin.style.display = 'none';
+                        } else {
+                            btnCheckin.style.display = 'block';
+                        }
+
+                        // Reschedule Button Logic
+                        const btnReschedule = document.getElementById('btn-reschedule-appt');
+                        btnReschedule.onclick = () => rescheduleAppointment(details);
+                        // Hide reschedule if already checked in
+                        btnReschedule.style.display = details.checked_in ? 'none' : 'block';
+
+                        document.getElementById('det-reason').textContent = details.entry_reason || 'Sin especificar';
                         document.getElementById('event-details-modal').classList.remove('hidden');
 
                     } catch (error) {
@@ -1655,9 +2132,160 @@ function loadCalendar() {
             calendar.render();
         } else {
             calendar.refetchEvents();
-            calendar.render(); // Re-render to Ensure sizing
         }
     }, 100);
+}
+
+
+function updateCalendarColors() {
+    // Logic:
+    // Green: Available >= 50% (Occupancy <= 50%)
+    // Yellow: Available < 50% (Occupancy > 50%)
+    // Orange: Available < 25% (Occupancy > 75%)
+    // Red: Full (Occupancy >= 100%)
+
+    // Note: FullCalendar v5/v6 renders days lazily. Global querySelectorAll works for visible days.
+    document.querySelectorAll('.fc-daygrid-day').forEach(cell => {
+        const dateStr = cell.dataset.date;
+        if (!dateStr) return;
+
+        const limit = currentCapacities[dateStr] || 20;
+        // Strict prefix match to ensure we catch YYYY-MM-DD matches
+        const count = currentCalendarRevisions.filter(r => r.scheduled_date && r.scheduled_date.startsWith(dateStr)).length;
+
+        const occupancy = (count / limit) * 100;
+        const available = 100 - occupancy;
+
+        let color = '';
+
+        if (count >= limit) {
+            color = '#fecaca'; // Red 200 - Full
+        } else if (available < 25) { // < 25% free (Occupancy > 75%)
+            color = '#fed7aa'; // Orange 200
+        } else if (available < 50) { // < 50% free (Occupancy > 50%)
+            color = '#fef08a'; // Yellow 200
+        } else {
+            color = '#bbf7d0'; // Green 200 - Default good
+        }
+
+        const frame = cell.querySelector('.fc-daygrid-day-frame');
+        if (frame) {
+            frame.style.backgroundColor = color;
+        }
+    });
+}
+
+
+// Capacity Functions
+let editingCapacityDate = null;
+
+function openCapacityModal(dateStr) {
+    editingCapacityDate = dateStr;
+    const limit = currentCapacities[dateStr]?.capacity || 20;
+    const isClosed = currentCapacities[dateStr]?.is_closed || false;
+
+    // Check existing revisions
+    const existingRevisions = currentCalendarRevisions.filter(r => r.scheduled_date && r.scheduled_date.startsWith(dateStr)).length;
+
+    const modalDate = document.getElementById('cap-modal-date');
+    const input = document.getElementById('cap-input');
+    const closedCheckbox = document.getElementById('cap-closed-input');
+    const warningText = document.getElementById('cap-closed-warning'); // Keep hidden mainly, used for generic layout if needed
+
+    modalDate.textContent = `Configurar para: ${dateStr}`;
+    input.value = limit;
+    closedCheckbox.checked = isClosed;
+
+    // Reset UI state
+    closedCheckbox.disabled = false;
+    warningText.style.display = 'none';
+
+    // Toggle capacity input based on closed state
+    input.disabled = closedCheckbox.checked;
+
+    // Handle Checkbox Inteaction
+    // Handle Checkbox Interaction - Strict Enforcement
+    closedCheckbox.onclick = (e) => {
+        const isChecking = e.target.checked;
+        const revCount = currentCalendarRevisions.filter(r => r.scheduled_date && r.scheduled_date.startsWith(dateStr)).length;
+
+        // If trying to CHECK (close the day) AND there are revisions
+        if (isChecking && revCount > 0) {
+            e.preventDefault(); // Stop check
+            // Show Warning Modal
+            document.getElementById('warning-reschedule-modal').classList.remove('hidden');
+            return;
+        }
+        input.disabled = isChecking;
+    };
+
+    document.getElementById('capacity-modal').classList.remove('hidden');
+}
+
+function closeCapacityModal() {
+    document.getElementById('capacity-modal').classList.add('hidden');
+    editingCapacityDate = null;
+}
+
+async function saveCapacity() {
+    if (!editingCapacityDate) return;
+    const newLimit = parseInt(document.getElementById('cap-input').value);
+    const isClosed = document.getElementById('cap-closed-input').checked;
+
+    if (!newLimit || newLimit < 1) {
+        alert('Ingresa una cantidad válida mayor a 0');
+        return;
+    }
+
+    // REDUNDANT CHECK: Prevent saving as closed if revisions exist
+    if (isClosed) {
+        const revCount = currentCalendarRevisions.filter(r => r.scheduled_date && r.scheduled_date.slice(0, 10) === editingCapacityDate).length;
+        if (revCount > 0) {
+            alert('Acción denegada: Existen citas agendadas para este día.');
+            document.getElementById('warning-reschedule-modal').classList.remove('hidden');
+            return;
+        }
+    }
+
+    try {
+        const response = await fetch('/api/capacities', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                date: editingCapacityDate,
+                capacity: newLimit,
+                is_closed: isClosed
+            })
+        });
+
+        if (response.ok) {
+            alert('Capacidad actualizada');
+            closeCapacityModal();
+            // Refetch calendar to update colors and stored capacities
+            if (calendar) calendar.refetchEvents();
+        } else {
+            alert('Error al guardar capacidad');
+        }
+    } catch (e) {
+        console.error(e);
+        alert('Error de conexión');
+    }
+}
+
+// Reschedule Logic
+function rescheduleAppointment(details) {
+    document.getElementById('event-details-modal').classList.add('hidden');
+
+    // Open Schedule Modal with existing data
+    document.getElementById('schedule-date').value = details.scheduled_date ? details.scheduled_date.slice(0, 10) : '';
+    document.getElementById('schedule-revision-id').value = details.revision_code;
+    // Pre-fill time if available (or just leave blank/default)
+    if (details.scheduled_date && details.scheduled_date.includes('T')) {
+        const timePart = details.scheduled_date.split('T')[1].slice(0, 5);
+        document.getElementById('schedule-time').value = timePart;
+    }
+
+    document.getElementById('schedule-modal').classList.remove('hidden');
 }
 
 // Cancel Appointment Logic
@@ -1729,15 +2357,43 @@ document.getElementById('btn-confirm-schedule').addEventListener('click', async 
     // Validate Time (Max 18:00)
     const [hours, minutes] = timeStr.split(':').map(Number);
     if (hours > 18 || (hours === 18 && minutes > 0)) {
-        alert('La hora máxima de ingreso es 6:00 PM (18:00)');
+        showAlert('La hora máxima de ingreso es 6:00 PM (18:00)');
         return;
     }
     if (hours < 8) {
-        alert('El horario de atención inicia a las 8:00 AM');
+        showAlert('El horario de atención inicia a las 8:00 AM');
         return;
     }
 
+    // Capacity & Closed Validation
+    if (currentCapacities && currentCalendarRevisions) {
+        const limit = currentCapacities[dateStr]?.capacity || 20;
+        const isClosed = currentCapacities[dateStr]?.is_closed || false;
+
+        if (isClosed) {
+            showAlert('No se puede agendar: El día seleccionado está marcado como cerrado.');
+            return;
+        }
+
+        // Check if moving to a NEW day or SAME day
+        // Find current revision to see its date
+        const currentRev = currentCalendarRevisions.find(r => r.revision_code === revCode);
+
+        // Strict date string comparison (YYYY-MM-DD)
+        const currentRevDate = currentRev && currentRev.scheduled_date ? currentRev.scheduled_date.slice(0, 10) : null;
+        const isSameDay = currentRevDate === dateStr;
+
+        if (!isSameDay) {
+            const count = currentCalendarRevisions.filter(r => r.scheduled_date && r.scheduled_date.slice(0, 10) === dateStr).length;
+            if (count >= limit) {
+                showAlert(`No se puede agendar: El día seleccionado está lleno (${count}/${limit}).`);
+                return;
+            }
+        }
+    }
+
     const scheduledDate = `${dateStr}T${timeStr}:00`;
+
 
     try {
         const response = await fetch('/api/revisions/schedule', {
@@ -1767,6 +2423,12 @@ document.getElementById('btn-close-details').addEventListener('click', () => {
     document.getElementById('event-details-modal').classList.add('hidden');
 });
 
+// Utility to show generic alert
+function showAlert(msg) {
+    document.getElementById('alert-modal-msg').textContent = msg;
+    document.getElementById('alert-modal').classList.remove('hidden');
+}
+
 // Mobile Sidebar Toggle
 document.addEventListener('DOMContentLoaded', () => {
     const menuToggle = document.getElementById('menu-toggle');
@@ -1795,3 +2457,291 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 });
+
+// View Approval Notes Modal
+
+function viewApprovalNotes(id) {
+    const est = allEstimatesCache.find(e => e.id == id);
+    if (!est) return;
+    const notes = est.approval_notes || 'Sin notas registradas.';
+    document.getElementById('view-notes-content').textContent = notes;
+    document.getElementById('view-notes-modal').classList.remove('hidden');
+}
+
+function renderDayCapacityBars() {
+    // Note: FullCalendar v5/v6 renders days lazily. Global querySelectorAll works for visible days.
+    document.querySelectorAll('.fc-daygrid-day').forEach(cell => {
+        const dateStr = cell.dataset.date;
+        if (!dateStr) return;
+
+        // Correctly handling the capacity object
+        const capObj = currentCapacities[dateStr];
+        const limit = capObj?.capacity || 20;
+        const isClosed = capObj?.is_closed || false;
+
+        // Strict prefix match to ensure we catch YYYY-MM-DD matches
+        const count = currentCalendarRevisions.filter(r => r.scheduled_date && r.scheduled_date.startsWith(dateStr)).length;
+        const percentage = Math.min((count / limit) * 100, 100);
+
+        // Determine Color
+        let barColor = '#bbf7d0'; // Green
+        if (isClosed) barColor = '#e2e8f0'; // Gray
+        else if (count >= limit) barColor = '#fecaca'; // Red
+        else if (percentage >= 75) barColor = '#fed7aa'; // Orange
+        else if (percentage >= 50) barColor = '#fef08a'; // Yellow
+
+        // Find or Create Bar Container
+        // We append it to the .fc-daygrid-day-frame, ensuring it's at the bottom
+        const frame = cell.querySelector('.fc-daygrid-day-frame');
+        if (!frame) return;
+
+        // Clean up old bar if exists (to avoid duplicates on re-render)
+        const oldBar = frame.querySelector('.capacity-bar-container');
+        if (oldBar) oldBar.remove();
+
+        const barContainer = document.createElement('div');
+        barContainer.className = 'capacity-bar-container';
+        barContainer.style.position = 'absolute';
+        barContainer.style.bottom = '2px';
+        barContainer.style.left = '2px';
+        barContainer.style.right = '2px';
+        barContainer.style.height = '16px';
+        barContainer.style.backgroundColor = '#f1f5f9';
+        barContainer.style.borderRadius = '3px';
+        barContainer.style.overflow = 'hidden';
+        barContainer.style.fontSize = '10px';
+        barContainer.style.display = 'flex';
+        barContainer.style.alignItems = 'center';
+        barContainer.style.justifyContent = 'center';
+        barContainer.style.color = '#334155';
+        barContainer.style.fontWeight = 'bold';
+        barContainer.style.zIndex = '4'; // Above background, below events? Events are usually z-index 6+
+
+        if (isClosed) {
+            barContainer.style.backgroundColor = '#e2e8f0';
+            barContainer.textContent = 'CERRADO';
+        } else {
+            // Inner Fill
+            const fill = document.createElement('div');
+            fill.style.position = 'absolute';
+            fill.style.left = '0';
+            fill.style.top = '0';
+            fill.style.bottom = '0';
+            fill.style.width = `${percentage}%`;
+            fill.style.backgroundColor = barColor; // Use the calculated barColor
+            fill.style.zIndex = '1';
+
+            // Text Label (centered on top)
+            const label = document.createElement('span');
+            label.textContent = `${count}/${limit} Autos`;
+            label.style.zIndex = '2';
+            label.style.position = 'relative';
+
+            barContainer.appendChild(fill);
+            barContainer.appendChild(label);
+        }
+
+        frame.appendChild(barContainer);
+
+        // Remove background color from cell itself if leftover
+        frame.style.backgroundColor = '';
+    });
+}
+
+// --- STATUS VIEW LOGIC (Appended) ---
+
+async function performStatusSearch() {
+    const term = document.getElementById('status-search-input').value.trim();
+    if (!term) {
+        showAlert('Por favor ingresa un término de búsqueda');
+        return;
+    }
+
+    const loader = document.getElementById('status-loading');
+    const resultCard = document.getElementById('status-result-card');
+
+    loader.classList.remove('hidden');
+    resultCard.classList.add('hidden');
+
+    try {
+        const response = await fetch('/api/vehicles');
+        if (!response.ok) throw new Error('Error al buscar');
+
+        const allVehicles = await response.json();
+        // Filter locally
+        const vehicle = allVehicles.find(v =>
+            v.plate.toLowerCase().includes(term.toLowerCase()) ||
+            (v.model && v.model.toLowerCase().includes(term.toLowerCase())) ||
+            (v.owner_name && v.owner_name.toLowerCase().includes(term.toLowerCase()))
+        );
+
+        if (!vehicle) {
+            loader.classList.add('hidden');
+            showAlert('No se encontró ningún vehículo con ese criterio.');
+            return;
+        }
+
+        // Fetch Estimate
+        let estimate = null;
+        try {
+            const estRes = await fetch(`/api/estimates/vehicle/${vehicle.id}`);
+            if (estRes.ok) estimate = await estRes.json();
+        } catch (e) {
+            console.log('No estimate found or error', e);
+        }
+
+        // Fetch History
+        let history = null;
+        try {
+            const histRes = await fetch(`/api/vehicles/${vehicle.id}/status-history`);
+            if (histRes.ok) history = await histRes.json();
+        } catch (e) { console.log('History error', e); }
+
+        renderStatusResult(vehicle, estimate, history);
+        loader.classList.add('hidden');
+        resultCard.classList.remove('hidden');
+
+    } catch (error) {
+        console.error(error);
+        loader.classList.add('hidden');
+        showAlert('Error al realizar la búsqueda');
+    }
+}
+
+function renderStatusResult(vehicle, estimate, history) {
+    // Basic Info
+    document.getElementById('status-veh-title').textContent = `${vehicle.brand} ${vehicle.model} (${vehicle.year})`;
+    document.getElementById('status-veh-subtitle').textContent = `Placa: ${vehicle.plate} | Dueño: ${vehicle.owner_name}`;
+
+    // Status Badge
+    const statusMap = {
+        1: { label: 'Ingreso', color: '#64748b' },
+        2: { label: 'En Proceso', color: '#3b82f6' },
+        3: { label: 'Pintura', color: '#8b5cf6' },
+        4: { label: 'Armado', color: '#f59e0b' },
+        5: { label: 'Finalizado', color: '#10b981' },
+        6: { label: 'Entregado', color: '#059669' }
+    };
+    const statusInfo = statusMap[vehicle.current_status_id] || { label: 'Desconocido', color: '#94a3b8' };
+
+    const badgeContainer = document.getElementById('status-badge-container');
+    badgeContainer.innerHTML = `
+        <span style="font-size: 1rem; padding: 8px 16px; border-radius: 9999px; background-color: ${statusInfo.color}; color: white; font-weight: 500;">
+            ${statusInfo.label}
+        </span>
+    `;
+
+    // Timeline Rendering
+    renderStatusTimeline(vehicle, estimate, history);
+}
+
+function renderStatusTimeline(vehicle, estimate, history) {
+    const timeline = document.getElementById('status-timeline');
+    timeline.innerHTML = '';
+
+    const currentStatus = vehicle.current_status_id || 1;
+
+    // Define Workflow
+    let activeCategories = [];
+    if (estimate && estimate.data && Array.isArray(estimate.data)) {
+        activeCategories = estimate.data.filter(cat => {
+            return (cat.enabled !== false);
+        }).map(cat => cat.name);
+    }
+
+    // Determine requirements
+    const requiresPaint = activeCategories.includes('pintura');
+    const requiresRepair = activeCategories.some(c => ['laminado', 'motor', 'electrico', 'cristales', 'suspension'].includes(c));
+
+    const steps = [
+        { id: 'ingreso', label: 'Ingreso', required: true, statusThreshold: 1 },
+        { id: 'reparacion', label: 'Reparación', required: requiresRepair, statusThreshold: 2 },
+        { id: 'pintura', label: 'Hoj. y Pintura', required: requiresPaint, statusThreshold: 3 },
+        { id: 'armado', label: 'Armado', required: true, statusThreshold: 4 },
+        { id: 'entrega', label: 'Entrega', required: true, statusThreshold: 6 }
+    ];
+
+    let missingInfoText = [];
+
+    steps.forEach((step, index) => {
+        const stepEl = document.createElement('div');
+        stepEl.className = 'step-item';
+
+        let stateClass = 'pending';
+        let icon = index + 1;
+
+        if (!step.required) {
+            stateClass = 'skipped';
+            icon = '✕';
+            missingInfoText.push(`• Fase de <strong>${step.label}</strong> omitida (no presupuestada).`);
+        } else {
+            if (currentStatus > step.statusThreshold) {
+                stateClass = 'completed';
+                icon = '✓';
+            } else if (currentStatus === step.statusThreshold) {
+                stateClass = 'active';
+            } else if (step.id === 'entrega' && currentStatus === 5) {
+                if (steps[index - 1].statusThreshold < 5) {
+                    stateClass = 'active';
+                    icon = '🏁';
+                    step.label = 'Listo';
+                }
+            }
+        }
+
+        if (currentStatus === 6 && step.required) {
+            stateClass = 'completed';
+            icon = '✓';
+        }
+
+        stepEl.classList.add(stateClass);
+
+        // --- HISTORY INFO ---
+        let dateStr = '';
+        let userStr = '';
+
+        if (history) {
+            if (step.id === 'ingreso' && history.created) {
+                const date = new Date(history.created.created_at);
+                dateStr = date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                userStr = history.created.created_by || 'Sistema'; // Fixed property access
+            } else {
+                // Find log
+                // Logic: Find log where to_status_id matches threshold
+                const log = history.logs.find(l => l.to_status_id === step.statusThreshold);
+                if (log) {
+                    const date = new Date(log.changed_at);
+                    dateStr = date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    userStr = log.changed_by_name || 'Sistema';
+                }
+            }
+        }
+
+        let infoHtml = '';
+        if (dateStr && stateClass !== 'pending' && stateClass !== 'skipped') {
+            infoHtml = `
+                <div style="margin-top: 8px; font-size: 0.75rem; color: #64748b; text-align: center;">
+                    <div>${dateStr}</div>
+                    <div style="font-weight: 500;">${userStr}</div>
+                </div>
+            `;
+        }
+
+        stepEl.innerHTML = `
+            <div class="step-circle">${icon}</div>
+            <div class="step-label">${step.label}</div>
+            ${infoHtml}
+        `;
+        timeline.appendChild(stepEl);
+    });
+
+    const missingDiv = document.getElementById('status-missing-info');
+    const missingText = document.getElementById('status-missing-text');
+
+    if (missingInfoText.length > 0) {
+        missingDiv.style.display = 'block';
+        missingText.innerHTML = missingInfoText.join('<br>');
+    } else {
+        missingDiv.style.display = 'none';
+    }
+}

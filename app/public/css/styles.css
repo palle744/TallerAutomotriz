@@ -522,3 +522,99 @@ th {
         padding: 16px;
     }
 }
+/* Status View Timeline */
+.step-item {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    flex: 1;
+}
+
+/* Connector Line */
+.step-item::after {
+    content: '';
+    position: absolute;
+    top: 15px;
+    left: 50%;
+    width: 100%;
+    height: 3px;
+    background-color: #e2e8f0;
+    z-index: 1;
+}
+
+.step-item:last-child::after {
+    display: none;
+}
+
+/* Circle */
+.step-circle {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background-color: #fff;
+    border: 2px solid #cbd5e1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    color: #cbd5e1;
+    z-index: 2;
+    margin-bottom: 8px;
+    transition: all 0.3s ease;
+}
+
+/* Label */
+.step-label {
+    font-size: 0.9rem;
+    color: #64748b;
+    font-weight: 500;
+}
+
+/* STATUS STATES */
+
+/* Completed */
+.step-item.completed .step-circle {
+    background-color: #10b981;
+    border-color: #10b981;
+    color: white;
+}
+.step-item.completed .step-label {
+    color: #10b981;
+}
+.step-item.completed::after {
+    background-color: #10b981;
+}
+
+/* Active */
+.step-item.active .step-circle {
+    background-color: #3b82f6;
+    border-color: #3b82f6;
+    color: white;
+    box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.2);
+}
+.step-item.active .step-label {
+    color: #3b82f6;
+    font-weight: bold;
+}
+.step-item.active::after {
+    background: linear-gradient(to right, #10b981 0%, #e2e8f0 100%);
+}
+
+/* Skipped / Not Required */
+.step-item.skipped .step-circle {
+    background-color: #f1f5f9;
+    border-color: #e2e8f0;
+    color: #cbd5e1;
+}
+.step-item.skipped .step-label {
+    color: #94a3b8;
+    text-decoration: line-through;
+}
+
+/* Pending */
+.step-item.pending .step-circle {
+    background-color: #fff;
+    border-color: #cbd5e1;
+    color: #cbd5e1;
+}
