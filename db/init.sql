@@ -76,6 +76,7 @@ CREATE TABLE IF NOT EXISTS revisions (
     email VARCHAR(100),
     rfc VARCHAR(20),
     scheduled_date TIMESTAMP, -- For Calendar
+    checked_in BOOLEAN DEFAULT FALSE, -- Flag for status view
     registered_by INTEGER REFERENCES users(id),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
