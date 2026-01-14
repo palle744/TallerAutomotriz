@@ -20,6 +20,7 @@ async function migrate() {
         console.log('Migration successful: checked_in column added.');
     } catch (err) {
         console.error('Migration failed:', err);
+        process.exit(1); // Exit with error code to fail the startup script
     } finally {
         await pool.end();
     }
