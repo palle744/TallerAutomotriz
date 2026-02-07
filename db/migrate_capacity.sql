@@ -1,0 +1,5 @@
+CREATE TABLE IF NOT EXISTS daily_capacities (
+    date DATE PRIMARY KEY,
+    capacity INTEGER NOT NULL DEFAULT 20,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);

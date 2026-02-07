@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CRM Taller Automotriz</title>
-    <link rel="stylesheet" href="css/styles.css">
+    <link rel="stylesheet" href="css/styles.css?v=2">
     <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.js'></script>
@@ -1440,6 +1440,34 @@
             <div class="modal-footer" style="justify-content: center; padding-top: 0; border-top: none;">
                 <button class="btn-primary"
                     onclick="document.getElementById('alert-modal').classList.add('hidden')">Aceptar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Daily Summary Modal -->
+    <div id="daily-summary-modal" class="modal hidden" style="z-index: 3000;">
+        <div class="modal-content" style="max-width: 600px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h3 id="summary-modal-title" style="margin: 0; color: #1e293b;">Vehículos Ingresados</h3>
+                <span class="close-modal" onclick="closeDailySummary()"
+                    style="cursor: pointer; font-size: 1.5rem;">&times;</span>
+            </div>
+            <div class="table-container" style="max-height: 400px; overflow-y: auto; box-shadow: none; padding: 0;">
+                <table style="width: 100%; border-collapse: collapse;">
+                    <thead style="position: sticky; top: 0; background: white;">
+                        <tr>
+                            <th style="padding: 10px; text-align: left; border-bottom: 2px solid #e2e8f0;">Placa</th>
+                            <th style="padding: 10px; text-align: left; border-bottom: 2px solid #e2e8f0;">Vehículo</th>
+                            <th style="padding: 10px; text-align: left; border-bottom: 2px solid #e2e8f0;">Usuario</th>
+                        </tr>
+                    </thead>
+                    <tbody id="summary-modal-body">
+                        <!-- Populated by JS -->
+                    </tbody>
+                </table>
+            </div>
+            <div style="margin-top: 20px; text-align: right; padding-top: 12px; border-top: 1px solid #e2e8f0;">
+                <button class="btn-primary" onclick="closeDailySummary()">Cerrar</button>
             </div>
         </div>
     </div>

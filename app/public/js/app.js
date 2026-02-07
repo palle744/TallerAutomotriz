@@ -1,7 +1,23 @@
 document.addEventListener('DOMContentLoaded', () => {
     loadVehicles();
     loadDashboardRevisions();
+    loadDashboardRevisions();
+
+    // Broadcast Channel Listener
+    const channel = new BroadcastChannel('crm_updates');
+    channel.onmessage = (event) => {
+        if (event.data === 'refresh_daily_entries') {
+            loadVehicles(); // Refresh dashboard counts
+            // If currently viewing daily entries, reload table
+            if (!document.getElementById('daily-entries').classList.contains('hidden')) {
+                loadDailyEntries();
+            }
+        }
+    };
 });
+
+let dailyEntriesInterval = null;
+let lastDailyEntryId = 0; // Track max ID for animation
 
 function showSection(sectionId) {
     document.querySelectorAll('.content-section').forEach(section => {
@@ -45,6 +61,13 @@ function showSection(sectionId) {
         document.getElementById('status-search-input').value = '';
         document.getElementById('status-result-card').classList.add('hidden');
         document.getElementById('status-loading').classList.add('hidden');
+    }
+
+    // Polling Logic for Daily Entries
+    if (dailyEntriesInterval) clearInterval(dailyEntriesInterval);
+    if (sectionId === 'daily-entries') {
+        // Poll every 10 seconds
+        dailyEntriesInterval = setInterval(loadDailyEntries, 10000);
     }
 }
 
@@ -890,7 +913,7 @@ async function loadRevisions() {
 
 async function loadDailyEntries() {
     try {
-        const response = await fetch('/api/reports/daily');
+        const response = await fetch('/api/reports/daily?t=' + Date.now());
         const vehicles = await response.json();
 
         const tbody = document.getElementById('daily-table-body');
@@ -906,8 +929,30 @@ async function loadDailyEntries() {
                 <td>${vehicle.brand || '-'}</td>
                 <td>${vehicle.plate}</td>
             `;
+
+            // Check for animation (skip on very first load to avoid flashing all)
+            if (lastDailyEntryId > 0 && vehicle.id > lastDailyEntryId) {
+                tr.classList.add('new-entry-anim');
+            }
+
             tbody.appendChild(tr);
         });
+
+        // Update Max ID seen
+        if (vehicles.length > 0) {
+            const currentMax = Math.max(...vehicles.map(v => v.id));
+            if (currentMax > lastDailyEntryId) {
+                lastDailyEntryId = currentMax;
+            }
+        } else {
+            // If list is empty, don't reset to 0, or do we? 
+            // Keep it to track future new ones.
+        }
+
+        // Handling first load initialization
+        if (lastDailyEntryId === 0 && vehicles.length > 0) {
+            lastDailyEntryId = Math.max(...vehicles.map(v => v.id));
+        }
     } catch (error) {
         console.error('Error loading daily entries:', error);
     }
@@ -1050,7 +1095,18 @@ document.getElementById('ingreso-form').addEventListener('submit', async (e) => 
             e.target.reset();
             // Reset toggle manually
             insuranceFields.classList.add('hidden');
+
+            // Refresh Dashboard data as well (counters, main table)
+            loadVehicles();
+
+            // Go to Daily Entries view
             showSection('daily-entries');
+
+            // Broadcast Update to other tabs
+            const channel = new BroadcastChannel('crm_updates');
+            channel.postMessage('refresh_daily_entries');
+            channel.close();
+
         } else {
             const err = await response.json();
             alert('Error al registrar el vehículo: ' + (err.details || 'Error desconocido'));
@@ -1954,9 +2010,11 @@ function loadCalendar() {
                         openCapacityModal(dateStr);
                     };
 
-                    // Ensure relative positioning on the cell itself
+                    // REMOVED unconditioned append. Moved to inside the IF NOT PAST check below
+                    // arg.el.style.position = 'relative'; // ensure relative still set though? 
                     arg.el.style.position = 'relative';
 
+                    /*
                     const frame = arg.el.querySelector('.fc-daygrid-day-frame');
                     if (frame) {
                         frame.appendChild(configBtn);
@@ -1964,6 +2022,7 @@ function loadCalendar() {
                         // Fallback
                         arg.el.appendChild(configBtn);
                     }
+                    */
 
                     // Mark Past Days with an "X"
                     const today = new Date();
@@ -1992,6 +2051,18 @@ function loadCalendar() {
 
                             frame.appendChild(xMark);
                             frame.style.backgroundColor = '#f9fafb';
+
+                            // Remove gear icon if exists/prevent logic
+                            const existingGear = frame.querySelector('.capacity-config-btn');
+                            if (existingGear) existingGear.remove();
+                        }
+                    } else {
+                        // Only Append Gear IF NOT PAST DATE
+                        const frame = arg.el.querySelector('.fc-daygrid-day-frame');
+                        if (frame) {
+                            frame.appendChild(configBtn);
+                        } else {
+                            arg.el.appendChild(configBtn);
                         }
                     }
                 },
@@ -2049,7 +2120,7 @@ function loadCalendar() {
                     // Parsing issue safety:
                     const clickedDateLocal = new Date(info.dateStr + 'T00:00:00');
                     if (clickedDateLocal < today) {
-                        alert('No se pueden agendar citas en fechas pasadas.');
+                        openDailySummary(info.dateStr);
                         return;
                     }
 
@@ -2457,6 +2528,83 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 });
+
+// Daily Summary Logic
+async function openDailySummary(dateStr) {
+    try {
+        const response = await fetch(`/api/reports/daily?date=${dateStr}&t=${Date.now()}`);
+        const vehicles = response.ok ? await response.json() : [];
+
+        const tbody = document.getElementById('summary-modal-body');
+        tbody.innerHTML = '';
+        document.getElementById('summary-modal-title').textContent = `Resumen: ${dateStr}`;
+
+        // 1. Scheduled Revisions (from Calendar Data)
+        // Show these FIRST as they are the expected "bars" on the calendar
+        const scheduled = currentCalendarRevisions.filter(r => r.scheduled_date && r.scheduled_date.startsWith(dateStr));
+
+        if (scheduled.length > 0) {
+            const header = document.createElement('tr');
+            header.innerHTML = '<td colspan="3" style="background:#e0f2fe; font-weight:bold; text-align:center; color:#0369a1;">Citas Programadas</td>';
+            tbody.appendChild(header);
+
+            scheduled.forEach(r => {
+                const tr = document.createElement('tr');
+                // Status indicator
+                const statusColor = r.checked_in ? '#10b981' : '#3b82f6';
+                const statusText = r.checked_in ? 'Ingresado' : 'Pendiente';
+
+                // Format time
+                let timeStr = '';
+                if (r.scheduled_date) {
+                    const dateObj = new Date(r.scheduled_date);
+                    timeStr = dateObj.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', hour12: true });
+                }
+
+                tr.innerHTML = `
+                    <td><span class="plate-badge" style="border-left: 4px solid ${statusColor}">${r.plate}</span></td>
+                    <td>${r.brand} ${r.model}</td>
+                    <td style="text-align: right;">
+                        <span class="badge" style="background:${statusColor}; color:white; margin-right:8px;">${statusText}</span>
+                        <span style="font-weight:bold; color:#475569;">${timeStr}</span>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        // 2. Vehicles Entered (Ingresos)
+        if (vehicles.length > 0) {
+            const header = document.createElement('tr');
+            header.innerHTML = '<td colspan="3" style="background:#dcfce7; font-weight:bold; text-align:center; color:#15803d; margin-top:10px;">Ingresos Registrados</td>';
+            tbody.appendChild(header);
+
+            vehicles.forEach(v => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td><span class="plate-badge">${v.plate}</span></td>
+                    <td>${v.brand} ${v.model}</td>
+                    <td>${v.registered_by_name || 'Sistema'}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        if (vehicles.length === 0 && scheduled.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="3" style="text-align:center; padding:20px; color: #666;">Sin actividad registrada este día</td></tr>';
+        }
+
+        document.getElementById('daily-summary-modal').classList.remove('hidden');
+
+    } catch (error) {
+        console.error(error);
+        alert('Error al obtener el resumen del día');
+    }
+}
+
+function closeDailySummary() {
+    document.getElementById('daily-summary-modal').classList.add('hidden');
+}
 
 // View Approval Notes Modal
 

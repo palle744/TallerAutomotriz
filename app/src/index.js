@@ -85,14 +85,16 @@ app.get('/api/vehicles', async (req, res) => {
       LEFT JOIN LATERAL (
         SELECT * FROM revisions r
         WHERE LOWER(r.plate) = LOWER(v.plate)
+        AND r.deleted_at IS NULL
         ORDER BY r.created_at DESC
         LIMIT 1
       ) r ON true
+      WHERE v.deleted_at IS NULL
     `;
     const params = [];
 
     if (status) {
-      query += ` WHERE s.name = $1`;
+      query += ` AND s.name = $1`;
       params.push(status);
 
       // Robustness: If filtering by 'Ingreso', also exclude vehicles that HAVE revisions 
@@ -122,10 +124,10 @@ app.get('/api/vehicles/:id', async (req, res) => {
   try {
     const query = `
             SELECT v.*, s.name as status_name,
-            (SELECT revision_code FROM revisions r WHERE lower(r.plate) = lower(v.plate) ORDER BY r.created_at DESC LIMIT 1) as revision_code
+            (SELECT revision_code FROM revisions r WHERE lower(r.plate) = lower(v.plate) AND r.deleted_at IS NULL ORDER BY r.created_at DESC LIMIT 1) as revision_code
             FROM vehicles v 
             LEFT JOIN repair_statuses s ON v.current_status_id = s.id 
-            WHERE v.id = $1`;
+            WHERE v.id = $1 AND v.deleted_at IS NULL`;
     const result = await pool.query(query, [id]);
     if (result.rows.length === 0) return res.status(404).json({ error: 'Vehículo no encontrado' });
     res.json(result.rows[0]);
@@ -143,6 +145,7 @@ app.get('/api/estimates/vehicle/:vehicle_id', async (req, res) => {
     const query = `
             SELECT * FROM estimates 
             WHERE vehicle_id = $1 
+            AND deleted_at IS NULL
             ORDER BY created_at DESC 
             LIMIT 1
         `;
@@ -227,7 +230,7 @@ async function generateRevisionCode(brand, pool) {
     code = `${monthLetter}${monthNum}${brandInitial}${random4}`;
 
     // Check uniqueness
-    const check = await pool.query('SELECT id FROM revisions WHERE revision_code = $1', [code]);
+    const check = await pool.query('SELECT id FROM revisions WHERE revision_code = $1 AND deleted_at IS NULL', [code]);
     if (check.rows.length === 0) {
       isUnique = true;
     }
@@ -364,7 +367,7 @@ app.post('/api/revisions/:id/checkin', async (req, res) => {
 app.get('/api/revisions/id/:id', async (req, res) => {
   const { id } = req.params;
   try {
-    const query = 'SELECT * FROM revisions WHERE id = $1';
+    const query = 'SELECT * FROM revisions WHERE id = $1 AND deleted_at IS NULL';
     const result = await pool.query(query, [id]);
 
     if (result.rows.length === 0) {
@@ -381,7 +384,7 @@ app.get('/api/revisions/id/:id', async (req, res) => {
 app.get('/api/revisions/:code', async (req, res) => {
   const { code } = req.params;
   try {
-    const query = 'SELECT * FROM revisions WHERE revision_code = $1';
+    const query = 'SELECT * FROM revisions WHERE revision_code = $1 AND deleted_at IS NULL';
     const result = await pool.query(query, [code]);
 
     if (result.rows.length === 0) {
@@ -447,6 +450,7 @@ app.get('/api/estimates', async (req, res) => {
       FROM estimates e
       JOIN vehicles v ON e.vehicle_id = v.id
       LEFT JOIN users u ON e.created_by = u.id
+      WHERE e.deleted_at IS NULL
       ORDER BY e.created_at DESC
     `);
     res.json(result.rows);
@@ -481,7 +485,7 @@ app.get('/api/estimates/:id', async (req, res) => {
             FROM estimates e
             JOIN vehicles v ON e.vehicle_id = v.id
             LEFT JOIN revisions r ON e.revision_id = r.id
-            WHERE e.id = $1
+            WHERE e.id = $1 AND e.deleted_at IS NULL
         `, [id]);
 
     if (result.rows.length === 0) {
@@ -526,7 +530,7 @@ app.put('/api/estimates/:id', async (req, res) => {
 app.get('/api/vehicles/search/:plate', async (req, res) => {
   const { plate } = req.params;
   try {
-    const query = 'SELECT * FROM vehicles WHERE plate = $1';
+    const query = 'SELECT * FROM vehicles WHERE plate = $1 AND deleted_at IS NULL';
     const result = await pool.query(query, [plate]);
 
     if (result.rows.length === 0) {
@@ -546,6 +550,7 @@ app.get('/api/revisions', async (req, res) => {
       SELECT r.*, u.username as registered_by_name 
       FROM revisions r
       LEFT JOIN users u ON r.registered_by = u.id
+      WHERE r.deleted_at IS NULL
       ORDER BY r.created_at DESC
     `;
     const result = await pool.query(query);
@@ -558,15 +563,21 @@ app.get('/api/revisions', async (req, res) => {
 
 // Get daily entries
 app.get('/api/reports/daily', async (req, res) => {
+  const { date } = req.query;
   try {
-    const query = `
+    // Default to current date in Mexico City if not provided
+    const targetDate = date || new Date().toLocaleDateString('en-CA', { timeZone: 'America/Mexico_City' });
+
+    let query = `
       SELECT v.id, v.plate, v.model, v.brand, v.year, u.username as registered_by_name 
       FROM vehicles v
       LEFT JOIN users u ON v.registered_by = u.id
-      WHERE v.created_at::date = CURRENT_DATE
+      WHERE (v.created_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Mexico_City')::date = $1::date
+      AND v.deleted_at IS NULL
       ORDER BY v.created_at DESC
     `;
-    const result = await pool.query(query);
+
+    const result = await pool.query(query, [targetDate]);
     res.json(result.rows);
   } catch (err) {
     console.error(err);
@@ -744,6 +755,7 @@ app.get('/api/reports/paint-history', async (req, res) => {
       ) l_out ON true
       LEFT JOIN users u_out ON l_out.changed_by = u_out.id
       WHERE l_in.to_status_id = 3
+      AND v.deleted_at IS NULL
       ORDER BY l_in.changed_at DESC
     `;
     const result = await pool.query(query);
@@ -781,6 +793,7 @@ app.get('/api/reports/laminado-history', async (req, res) => {
       ) l_out ON true
       LEFT JOIN users u_out ON l_out.changed_by = u_out.id
       WHERE l_in.to_status_id = 7
+      AND v.deleted_at IS NULL
       ORDER BY l_in.changed_at DESC
     `;
     const result = await pool.query(query);
@@ -822,6 +835,7 @@ app.get('/api/vehicles/:id/status-history', async (req, res) => {
       FROM vehicles v
       LEFT JOIN users u ON v.registered_by = u.id
       WHERE v.id = $1
+      AND v.deleted_at IS NULL
     `;
     const metaRes = await pool.query(metaQuery, [id]);
     const meta = metaRes.rows[0];

@@ -522,6 +522,7 @@ th {
         padding: 16px;
     }
 }
+
 /* Status View Timeline */
 .step-item {
     position: relative;
@@ -579,9 +580,11 @@ th {
     border-color: #10b981;
     color: white;
 }
+
 .step-item.completed .step-label {
     color: #10b981;
 }
+
 .step-item.completed::after {
     background-color: #10b981;
 }
@@ -593,10 +596,12 @@ th {
     color: white;
     box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.2);
 }
+
 .step-item.active .step-label {
     color: #3b82f6;
     font-weight: bold;
 }
+
 .step-item.active::after {
     background: linear-gradient(to right, #10b981 0%, #e2e8f0 100%);
 }
@@ -607,6 +612,7 @@ th {
     border-color: #e2e8f0;
     color: #cbd5e1;
 }
+
 .step-item.skipped .step-label {
     color: #94a3b8;
     text-decoration: line-through;
@@ -617,4 +623,37 @@ th {
     background-color: #fff;
     border-color: #cbd5e1;
     color: #cbd5e1;
+}
+
+/* Flame Effect Animation for new entries */
+.new-entry-anim {
+    animation: flamePulse 3s ease-out;
+    position: relative;
+    z-index: 10;
+}
+
+@keyframes flamePulse {
+    0% {
+        background-color: rgba(255, 69, 0, 0.2);
+        /* Red-Orange */
+        box-shadow: 0 0 15px rgba(255, 69, 0, 0.6) inset;
+        transform: scale(1.02);
+    }
+
+    20% {
+        background-color: rgba(255, 140, 0, 0.3);
+        /* Dark Orange */
+        box-shadow: 0 0 25px rgba(255, 140, 0, 0.5) inset;
+    }
+
+    50% {
+        background-color: rgba(255, 69, 0, 0.1);
+        box-shadow: 0 0 10px rgba(255, 69, 0, 0.3) inset;
+    }
+
+    100% {
+        background-color: transparent;
+        box-shadow: none;
+        transform: scale(1);
+    }
 }
